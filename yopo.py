@@ -1,16 +1,16 @@
 import http.server
+from http import HTTPStatus
 
 class RequestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         print(self.headers)
-        f = self.send_head()
-        if f:
-            try:
-                f.write('ho\n')
-            finally:
-                f.close()
+        self.send_response(HTTPStatus.OK)
+        self.end_headers()
+        self.wfile.write(b'ho\n')
 
 def main():
-    server = http.server.ThreadingHTTPServer(('127.0.0.1', 25192), RequestHandler)
+    listen = ('127.0.0.1', 25192)
+    server = http.server.ThreadingHTTPServer(listen, RequestHandler)
+    print('listening on', listen)
     server.serve_forever()
 if __name__ == '__main__': main()

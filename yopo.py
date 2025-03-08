@@ -5,16 +5,20 @@ import time
 import atexit
 import tempfile
 import traceback
-from typing import Iterable
+import datetime
+import os
+from typing import Iterable, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 from dataclasses import dataclass
+
+os.chdir(Path(__file__).parent)
 
 _a = time.time()
 import google.genai # :( this is super slow
 _b = time.time()
 print('genai import time is', _b-_a)
 
-gac = google.genai.Client(api_key="GEMINI_API_KEY")
+from google.genai.types import PartUnionDict, Part, GenerateContentConfig, Tool, FunctionDeclaration, Schema, Type as SType
 
 import imageio.v3 as iio
 
@@ -31,11 +35,25 @@ def rc_send_and_recv(cmd: str) -> str:
     return rc_sock.recv(65536).decode('utf-8')
 
 screenshot_dir = Path('~/Documents/RetroArch/screenshots').expanduser()
-temp_screenshot_dir = screenshot_dir.parent / 'poyo_tmp'
-temp_screenshot_dir.mkdir(exist_ok=True)
+log_dir = Path('~/Documents/poyo-log').expanduser()
+log_dir.mkdir(exist_ok=True)
 def shots() -> Iterable[Path]:
     return screenshot_dir.glob('Pokemon*.png')
-def screenshot() -> tempfile.NamedTemporaryFile:
+
+def get_unique_path(next_id: int, dir: Path, prefix: str, precision: int, suffix: str) -> tuple[Path, int]:
+    while True:
+        new_path = dir / f'{prefix}{next_id:0{precision}}{suffix}'
+        try:
+            f = new_path.open('xb')
+        except FileExistsError:
+            next_id += 1
+        else:
+            break
+    f.close()
+    return new_path, next_id
+next_screenshot_id = 1
+def screenshot() -> Path:
+    global next_screenshot_id
     for path in shots():
         path.unlink()
     pre = time.time()
@@ -55,10 +73,10 @@ def screenshot() -> tempfile.NamedTemporaryFile:
         #print('...waiting for shot')
         time.sleep(0.05)
     post = time.time()
-    #print('got', path, 'after', post - pre)
-    tf = tempfile.NamedTemporaryFile(dir=temp_screenshot_dir)
-    path.rename(tf.name)
-    return tf
+    print('got', path, 'after', post - pre)
+    new_path, next_screenshot_id = get_unique_path(next_screenshot_id, log_dir, 'ss', 5, '.png')
+    path.rename(new_path)
+    return new_path
 
 @dataclass
 class PadState:
@@ -114,11 +132,84 @@ def clear_pad():
     print('clear_pad')
     pad_send(PadState())
 
+BUTTON_PRESS_FD = lambda: FunctionDeclaration(
+    name='button_press',
+    description='Press one or more buttons in the emulated game.  Buttons will be pressed sequentially for a duration of 1 second.  Instead of a button, you can also pass "wait" to just wait 1 second without pressing anything.',
+    parameters=Schema(
+        type=SType.OBJECT,
+        properties={
+            'buttons': Schema(
+                type=SType.ARRAY,
+                min_items=1,
+                items=Schema(
+                    type=SType.STRING,
+                    format='enum',
+                    enum=['up', 'down', 'left', 'right', 'a', 'b', 'start', 'select', 'wait'],
+                ),
+            ),
+        },
+        required=['buttons'],
+    ),
+
+)
+next_log_id = 1
+class ChatWrap:
+    def __init__(self):
+        global next_log_id
+        gac = google.genai.Client(
+            api_key=open('api_key.txt').read().strip(),
+            http_options={'api_version':'v1alpha'}
+        )
+        config = GenerateContentConfig(
+            tools=[
+                Tool(
+                    function_declarations=[
+                        BUTTON_PRESS_FD(),
+                    ]
+                )
+            ]
+        )
+        self.chat = gac.chats.create(
+            model='gemini-2.0-flash-thinking-exp',
+            config=config
+        )
+        self.log_path, next_log_id = get_unique_path(next_log_id, log_dir, 'log', 2, '.txt')
+        self.log_fp = self.log_path.open('w')
+        print(f'Logging to {self.log_path}')
+    def log(self, what: str, add_time: bool = True) -> None:
+        if add_time:
+            now = str(datetime.datetime.now())
+            what = f'{now}  {what}'
+        print(what, end='', flush=True)
+        print(what, end='', flush=True, file=self.log_fp)
+    def send(self, text: str, image: Optional[Path] = None) -> None:
+        self.log(f'Sending: {text!r}\n')
+        if image:
+            self.log(f'Sending image: {image.name}\n')
+        parts: list[PartUnionDict] = [Part.from_text(text=text)]
+        if image:
+            parts.append(Part.from_bytes(data=image.read_bytes(), mime_type='image/png'))
+        self.log(f'Response:\n> ')
+        last_was_nl = False
+        for chunk in self.chat.send_message_stream(parts):
+            print('**', text)
+            text = chunk.text
+            if last_was_nl:
+                text = '\n' + text
+            last_was_nl = text.endswith('\n')
+            if last_was_nl:
+                text = text[:-1]
+            self.log(text.replace('\n', '\n> '), add_time=False)
+        self.log('\n', add_time=False)
+
+INTRO_TEXT = '''
+You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the game as images, and you can control the game using the button_press function call.  Your job is to beat the game.
+'''
+
 def main():
-    threading.Thread(target=ud_thread).start()
-    while True:
-        print(screenshot())
-        time.sleep(1)
-        
-    pass
+    #do_chat()
+    cw = ChatWrap()
+    cw.send(INTRO_TEXT)
+    ss = screenshot()
+    cw.send('Current screenshot:', image=ss)
 if __name__ == '__main__': main()

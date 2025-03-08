@@ -9,6 +9,12 @@ from typing import Iterable
 from pathlib import Path
 from dataclasses import dataclass
 
+_a = time.time()
+import google.genai # :( this is super slow
+_b = time.time()
+print('genai import time is', _b-_a)
+
+gac = google.genai.Client(api_key="GEMINI_API_KEY")
 
 import imageio.v3 as iio
 

@@ -1,5 +1,6 @@
 import http.server
 from http import HTTPStatus
+import time
 
 class RequestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -7,6 +8,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.end_headers()
         self.wfile.write(b'ho\n')
+        time.sleep(1)
 
 def main():
     listen = ('127.0.0.1', 25192)

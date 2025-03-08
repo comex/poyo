@@ -3,8 +3,15 @@ import threading
 import struct
 import time
 import atexit
+import tempfile
+import traceback
+from typing import Iterable
 from pathlib import Path
 from dataclasses import dataclass
+
+
+import imageio.v3 as iio
+
 rc_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 #sock.bind(('127.0.0.1', 0))
 rc_sock.connect(('127.0.0.1', 55355))
@@ -17,9 +24,35 @@ def rc_send_and_recv(cmd: str) -> str:
     rc_send(cmd)
     return rc_sock.recv(65536).decode('utf-8')
 
-screenshot_dir = Path('~/Documents/RetroArch/screenshots')
-def screenshot():
+screenshot_dir = Path('~/Documents/RetroArch/screenshots').expanduser()
+temp_screenshot_dir = screenshot_dir.parent / 'poyo_tmp'
+temp_screenshot_dir.mkdir(exist_ok=True)
+def shots() -> Iterable[Path]:
+    return screenshot_dir.glob('Pokemon*.png')
+def screenshot() -> tempfile.NamedTemporaryFile:
+    for path in shots():
+        path.unlink()
+    pre = time.time()
     rc_send('SCREENSHOT')
+    while True:
+        s = list(shots())
+        if s:
+            if len(s) > 1:
+                print('** multiple screenshots?', s)
+            path = s[0]
+            try:
+                iio.imread(path)
+            except:
+                traceback.print_exc()
+            else:
+                break
+        #print('...waiting for shot')
+        time.sleep(0.05)
+    post = time.time()
+    #print('got', path, 'after', post - pre)
+    tf = tempfile.NamedTemporaryFile(dir=temp_screenshot_dir)
+    path.rename(tf.name)
+    return tf
 
 @dataclass
 class PadState:
@@ -78,7 +111,7 @@ def clear_pad():
 def main():
     threading.Thread(target=ud_thread).start()
     while True:
-        screenshot()
+        print(screenshot())
         time.sleep(1)
         
     pass

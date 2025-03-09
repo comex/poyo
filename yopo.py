@@ -9,6 +9,8 @@ import datetime
 import os
 import re
 import ast
+import json
+import traceback
 from typing import Iterable, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 from dataclasses import dataclass
@@ -250,7 +252,7 @@ class ChatWrap:
         self.log(f'Loading log: {path.name} ({size})\n')
         return parse_log(path, size)
 
-    def send(self, text: str, image: Optional[Path] = None) -> None:
+    def send(self, text: str, image: Optional[Path] = None) -> str:
         self.log(f'Sending: {text!r}\n')
         if image:
             self.log(f'Sending image: {image.name}\n')
@@ -259,9 +261,11 @@ class ChatWrap:
             parts.append(Part.from_bytes(data=image.read_bytes(), mime_type='image/png'))
         self.log(f'Response:\n> ')
         last_was_nl = False
+        full_text = ''
         for chunk in self.chat.send_message_stream(parts):
-            print('**', text)
-            text = chunk.text
+            text = chunk.text or ''
+            #print('?', chunk, repr(chunk.text))
+            full_text += text
             if last_was_nl:
                 text = '\n' + text
             last_was_nl = text.endswith('\n')
@@ -269,6 +273,7 @@ class ChatWrap:
                 text = text[:-1]
             self.log(text.replace('\n', '\n> '), add_time=False)
         self.log('\n', add_time=False)
+        return full_text
 
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
@@ -276,25 +281,64 @@ You are connected to an emulator playing a game of Pokémon Yellow Version.  You
 After receiving each screenshot, you should respond in two parts.  First, explain your current thinking.  Then, you MUST end with a specially-formatted line starting with "ACTIONS:" followed by a JSON array of actions.  Each action is a string.
 
 The following actions are available (each button will be pressed for 1 second):
-'a': press A
-'b': press B
-'up': press up on the D-pad
-'left': press left on the D-pad
-'down': press down on the D-pad
-'right': press right on the D-pad
-'select': press select
-'start': press start
+"a": press A
+"b": press B
+"up": press up on the D-pad
+"left": press left on the D-pad
+"down": press down on the D-pad
+"right": press right on the D-pad
+"select": press select
+"start": press start
+"wait": press nothing, just wait 1 second
 
 Examples:
-ACTIONS: ['a']
-ACTIONS: ['right', 'right', 'right']
+ACTIONS: ["a"]
+ACTIONS: ["right", "wait", "right", "right"]
 '''
+
+Action = str
+def is_valid_action(a: Action) -> bool:
+    if isinstance(a, str):
+        if a in PAD_STATE_ATTR_TO_RETRO_DEVICE_ID:
+            return True
+        if a == 'wait':
+            return True
+    return False
+
+def parse_resp(resp: str) -> Optional[list[Action]]:
+    ms = re.findall('ACTIONS: (.*)', resp)
+    if not ms:
+        print('[No ACTIONS line: {resp!r}]')
+        return None
+    actions = ms[-1]
+    try:
+        parsed = json.loads(actions)
+    except json.decoder.JSONDecodeError:
+        print(f'[JSON decode failed: {actions!r}]')
+        return None
+    if not isinstance(parsed, list):
+        print(f'[Not a list: {actions!r}]')
+        return None
+    for action in actions:
+        if not is_valid_action(action):
+            print(f'[Not valid action: {action!r}]')
+            return None
+    return actions
 
 def main():
     #do_chat()
-    cw = ChatWrap(base_log_path=log_dir / 'log07.txt')
-    return
-    cw.send(INTRO_TEXT)
-    ss = screenshot()
-    cw.send('Current screenshot:', image=ss)
+    base_log_path: Optional[Path] = None # log_dir / 'log07.txt'
+    cw = ChatWrap(base_log_path)
+    while True:
+        if not cw.chat.get_history():
+            text = INTRO_TEXT
+        else:
+            text = '\nCurrent screenshot:'
+        ss = screenshot()
+        resp = cw.send(text, ss)
+        while (actions := parse_resp(resp)) is None:
+            admonish = '\nCould not parse ACTIONS line out of that response.  Try again.'
+            resp = cw.send(admonish, None)
+        break
+
 if __name__ == '__main__': main()

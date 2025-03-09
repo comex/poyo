@@ -93,6 +93,9 @@ class PadState:
     start: bool = False
     select: bool = False
 
+    def as_list(self) -> list[str]:
+        return [name for name in PAD_STATE_ATTR_TO_RETRO_DEVICE_ID if getattr(self, name)]
+
 # https://github.com/libretro/RetroArch/blob/master/libretro-common/include/libretro.h#L320
 PAD_STATE_ATTR_TO_RETRO_DEVICE_ID = {
     'up': 4,
@@ -107,6 +110,7 @@ PAD_STATE_ATTR_TO_RETRO_DEVICE_ID = {
 
 def pad_send(state: PadState):
     # https://github.com/libretro/RetroArch/blob/9cad6dd993c192030857733d8bd5f27616ece544/cores/libretro-net-retropad/net_retropad_core.c#L81
+    print('pad_send:', state.as_list())
     msgs: list[bytes] = []
     for pad_state_attr, retro_device_id in PAD_STATE_ATTR_TO_RETRO_DEVICE_ID.items():
         val: bool = getattr(state, pad_state_attr)
@@ -305,6 +309,19 @@ def is_valid_action(a: Action) -> bool:
             return True
     return False
 
+def do_action(action: Action) -> None:
+    if action in PAD_STATE_ATTR_TO_RETRO_DEVICE_ID or action == 'wait':
+        pad_state = PadState()
+        if action != 'wait':
+            setattr(pad_state, action, True)
+        pad_send(pad_state)
+        print('Waiting 1 second...', flush=True, end='')
+        time.sleep(1)
+        print('done.')
+        pad_send(PadState())
+        return
+    raise Exception(f'!? {action!r}')
+
 def parse_resp(resp: str) -> Optional[list[Action]]:
     ms = re.findall('ACTIONS: (.*)', resp)
     if not ms:
@@ -319,11 +336,11 @@ def parse_resp(resp: str) -> Optional[list[Action]]:
     if not isinstance(parsed, list):
         print(f'[Not a list: {actions!r}]')
         return None
-    for action in actions:
+    for action in parsed:
         if not is_valid_action(action):
             print(f'[Not valid action: {action!r}]')
             return None
-    return actions
+    return parsed
 
 def main():
     #do_chat()
@@ -336,9 +353,17 @@ def main():
             text = '\nCurrent screenshot:'
         ss = screenshot()
         resp = cw.send(text, ss)
+        bad_count = 0
         while (actions := parse_resp(resp)) is None:
+            bad_count += 1
+            if bad_count >= 10:
+                raise Exception('something is very wrong')
             admonish = '\nCould not parse ACTIONS line out of that response.  Try again.'
             resp = cw.send(admonish, None)
-        break
+        for action in actions:
+            do_action(action)
+        print('Waiting 1 more second for any responses...', flush=True, end='')
+        time.sleep(1) # 
+        print('done.')
 
 if __name__ == '__main__': main()

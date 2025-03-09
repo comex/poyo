@@ -288,9 +288,9 @@ After receiving each screenshot, you should respond in three parts.
     - Then double-check that the object is still on the screen!
   - For all text on the screen, recite the entire text.
 - Then, explain your current thinking.
-- Finally, you MUST end with a specially-formatted line starting with "ACTIONS:" followed by a JSON array of actions.  Each action is a string.
+- Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action as a JSON-quoted string.
 
-The following actions are available (each button will be pressed for 1 second):
+The following actions are available (each button will be pressed for 0.5 seconds):
 "a": press A
 "b": press B
 "up": press up on the D-pad
@@ -302,8 +302,8 @@ The following actions are available (each button will be pressed for 1 second):
 "wait": press nothing, just wait 1 second
 
 Examples:
-ACTIONS: ["a"]
-ACTIONS: ["right", "wait", "right"]
+ACTION: "a"
+ACTION: "right"
 
 There is a limit of 3 actions per response.  To perform any more actions you must wait for the next screenshot.
 '''
@@ -341,12 +341,17 @@ def parse_resp(resp: str) -> Optional[list[Action]]:
     except json.decoder.JSONDecodeError:
         print(f'[JSON decode failed: {actions!r}]')
         return None
+    if isinstance(parsed, str):
+        parsed = [parsed]
     if not isinstance(parsed, list):
-        print(f'[Not a list: {actions!r}]')
+        print(f'[Not a list: {parsed!r}]')
+        return None
+    if len(parsed) != 1:
+        print(f'[Wrong number of actions: {parsed!r}]')
         return None
     for action in parsed:
         if not is_valid_action(action):
-            print(f'[Not valid action: {action!r}]')
+            print(f'[Invalid action: {action!r} in {parsed!r}]')
             return None
     return parsed
 
@@ -374,14 +379,25 @@ def main():
                 raise Exception('something is very wrong')
             admonish = '\nCould not parse ACTIONS line out of that response.  Try again.'
             resp = cw.send(admonish, None)
-        if len(actions) > 3:
-            need_actions_admonish = True
-            actions = actions[:3]
-            pre_prompt = f'Too many actions.  Using the first 3 ({json.dumps(actions)}) and ignoring the rest.'
+        #if len(actions) > 3:
+        #    need_actions_admonish = True
+        #    actions = actions[:3]
+        #    pre_prompt = f'Too many actions.  Using the first 3 ({json.dumps(actions)}) and ignoring the rest.'
         for action in actions:
             do_action(action)
         print('Waiting 1 more second for any responses...', flush=True, end='')
         time.sleep(1) # 
         print('done.')
 
-if __name__ == '__main__': main()
+def read_mem(addr, size):
+    print(rc_send_and_recv(f'READ_CORE_MEMORY {addr:x} {size}'))
+#if __name__ == '__main__': main()
+
+def x():
+    #print(rc_send_and_recv(f'READ_CORE_MEMORY FF42 2'), rc_send_and_recv(f'READ_CORE_MEMORY FFAE 3'))
+    while True:
+        #print(rc_send_and_recv(f'READ_CORE_MEMORY C100 16'))
+        print(rc_send_and_recv(f'READ_CORE_MEMORY D360 2'))
+        time.sleep(0.2)
+#x()
+read_mem(0xd360, 2)

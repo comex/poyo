@@ -10,7 +10,7 @@ STATE_TO_COLOR = {
     # ^ for now, don't tell the model what ledges are
     TileState.HERE:       ('#00000080', '#ffffff'),
 }
-SCALE_FACTOR = 6
+SCALE_FACTOR = 4
 JUST_DRAW_TILES = False
 def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTileAccess[TileState], tile_map: TileAccess[int], skip_tiles: bool) -> Path:
     out_path = path.with_suffix('.annotated.png')
@@ -20,7 +20,10 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
         #a = time.time()
         ow, oh = image.size
         assert (ow, oh) == (160, 144)
-        big = image.resize((ow*6, oh*6))#, resample=Image.Resampling.NEAREST)
+        big = image.resize(
+            (ow * SCALE_FACTOR, oh * SCALE_FACTOR),
+            #resample=Image.Resampling.NEAREST,
+        )
         draw = ImageDraw.Draw(big, 'RGBA')
         font_size = 16
         step = 1 if JUST_DRAW_TILES else 2
@@ -49,7 +52,7 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
                     x_off = xt * TILE_WIDTH_PX * SCALE_FACTOR
                     y_off = (yt - 1) * TILE_HEIGHT_PX * SCALE_FACTOR
                     xpos, ypos = camera_pos[0] + xt // 2, camera_pos[1] + yt // 2
-                    text = f'({xpos} ,{ypos})' # this spacing looks a bit better when rendered
+                    text = f'{xpos},\n{ypos}'
 
                     state = reachable_state[xt, yt]
                     bg_color, fg_color = STATE_TO_COLOR[state]

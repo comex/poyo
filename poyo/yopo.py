@@ -3,8 +3,7 @@ import time
 import os
 import re
 import json
-from typing import Optional, cast, TypeVar, Callable
-from copy import copy
+from typing import Optional, cast
 from pathlib import Path
 from functools import lru_cache, cache
 #from dataclasses import dataclass
@@ -13,7 +12,7 @@ from .common import *
 from . import retroarch
 from . import pil
 
-os.chdir(Path(__file__).parent)
+os.chdir(Path(__file__).parent.parent)
 
 def ud_thread():
     state = PadState()
@@ -25,6 +24,13 @@ def ud_thread():
         retroarch.pad_send(state)
         time.sleep(0.2)
 
+def debug_http():
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    import http.client
+    http.client.HTTPConnection.debuglevel = 2
+
+debug_http()
 # BUTTON_PRESS_FD = lambda: FunctionDeclaration(
 #     name='button_press',
 #     description='Press one or more buttons in the emulated game.  Buttons will be pressed sequentially for a duration of 1 second.  Instead of a button, you can also pass "wait" to just wait 1 second without pressing anything.',
@@ -127,41 +133,6 @@ def parse_resp(resp: str) -> Optional[list[Action]]:
             return None
     return cast(list[Action], parsed)
 
-def main():
-    #do_chat()
-    base_log_path: Optional[Path] = None # log_dir / 'log07.txt'
-    from .ai import ChatWrap
-    cw = ChatWrap(base_log_path)
-    pre_prompt: Optional[str] = None # won't save, but whatever
-    while True:
-        if not cw.chat.get_history():
-            text = INTRO_TEXT
-            assert pre_prompt is None
-        else:
-            text = '\n'
-            if pre_prompt is not None:
-                text += pre_prompt
-            text += 'Current screenshot:'
-        pre_prompt = None
-        ss = retroarch.screenshot()
-        resp = cw.send(text, ss)
-        bad_count = 0
-        while (actions := parse_resp(resp)) is None:
-            bad_count += 1
-            if bad_count >= 10:
-                raise Exception('something is very wrong')
-            admonish = '\nCould not parse ACTIONS line out of that response.  Try again.'
-            resp = cw.send(admonish, None)
-        #if len(actions) > 3:
-        #    need_actions_admonish = True
-        #    actions = actions[:3]
-        #    pre_prompt = f'Too many actions.  Using the first 3 ({json.dumps(actions)}) and ignoring the rest.'
-        for action in actions:
-            do_action(action)
-        print('Waiting 1 more second for any responses...', flush=True, end='')
-        time.sleep(1) # 
-        print('done.')
-
 class Symbols(dict[str, int]):
     @staticmethod
     @cache
@@ -170,7 +141,7 @@ class Symbols(dict[str, int]):
     def __init__(self):
         super().__init__()
         matches = re.findall(r'^\s*\$(....) = (\w[^ ]*)\s*$',
-                             Path('../data/pokeyellow.map').read_text(),
+                             Path('data/pokeyellow.map').read_text(),
                              flags=re.M)
         for addr_str, name in matches:
             self[name] = int(addr_str, 16)
@@ -284,22 +255,51 @@ def reachable_state(gs: GameSnapshot) -> UsefulTileAccess[TileState]:
     return ret
 
 
-def xtime(f: Callable[[], T]) -> T:
-    a = time.time()
-    ret = f()
-    b = time.time()
-    print('xtime:', b - a)
-    return ret
+def annotated_screenshot() -> Path:
+    gs = GameSnapshot()
+    return pil.annotate_screenshot(
+        path=retroarch.screenshot(),
+        camera_pos=gs.camera_pos(),
+        reachable_state=reachable_state(gs),
+        tile_map=gs.tile_map(),
+        skip_tiles=bool(gs.in_battle()),
+    )
 
+def main():
+    #do_chat()
+    base_log_path: Optional[Path] = None # log_dir / 'log07.txt'
+    from .ai import ChatWrap
+    cw = ChatWrap(base_log_path)
+    pre_prompt: Optional[str] = None # won't save, but whatever
+    while True:
+        if not cw.chat.get_history():
+            text = INTRO_TEXT
+            assert pre_prompt is None
+        else:
+            text = '\n'
+            if pre_prompt is not None:
+                text += pre_prompt
+            text += 'Current screenshot:'
+        pre_prompt = None
+        ss = annotated_screenshot()
+        resp = cw.send(text, ss)
+        bad_count = 0
+        while (actions := parse_resp(resp)) is None:
+            bad_count += 1
+            if bad_count >= 10:
+                raise Exception('something is very wrong')
+            admonish = '\nCould not parse ACTIONS line out of that response.  Try again.'
+            resp = cw.send(admonish, None)
+        #if len(actions) > 3:
+        #    need_actions_admonish = True
+        #    actions = actions[:3]
+        #    pre_prompt = f'Too many actions.  Using the first 3 ({json.dumps(actions)}) and ignoring the rest.'
+        for action in actions:
+            do_action(action)
+        print('Waiting 1 more second for any responses...', flush=True, end='')
+        time.sleep(1) # 
+        print('done.')
 
-gs = GameSnapshot()
-#print([hex(z) for z in gs.collision_data()]); die()
-#print('TB:', gs.read_mem(gs.symbols['wTextBoxID'], 1)[0])
-print(pil.annotate_screenshot(
-    path=retroarch.screenshot(),
-    camera_pos=gs.camera_pos(),
-    reachable_state=reachable_state(gs),
-    tile_map=gs.tile_map(),
-    skip_tiles=bool(gs.in_battle()),
-))
-#if __name__ == '__main__': main()
+if __name__ == '__main__':
+    #main()
+    print(annotated_screenshot())

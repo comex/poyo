@@ -5,7 +5,7 @@ import traceback
 import struct
 import re
 from pathlib import Path
-from typing import Iterable, Any, Optional, TYPE_CHECKING
+from typing import Iterable
 import atexit
 
 from .common import *

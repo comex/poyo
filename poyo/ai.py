@@ -5,7 +5,7 @@ import ast
 from typing import Optional, Iterator
 from pathlib import Path
 
-from common import get_unique_path, log_dir
+from .common import get_unique_path, log_dir
 
 _a = time.time()
 import google.genai # :( this is super slow

@@ -1,7 +1,8 @@
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar, Iterable
+from typing import Generic, Protocol, TypeVar, Iterable, Callable
 from enum import IntEnum
+import time
 T = TypeVar('T')
 
 Coord = tuple[int, int]
@@ -89,4 +90,11 @@ class TileAccess(Generic[T]):
 class UsefulTileAccess(Generic[T], TileAccess[T]):
     def valid_xy(self, x: int, y: int) -> bool:
         return x % 2 == 0 and y % 2 == 1
+
+def xtime(f: Callable[[], T]) -> T:
+    a = time.time()
+    ret = f()
+    b = time.time()
+    print('xtime:', b - a)
+    return ret
 

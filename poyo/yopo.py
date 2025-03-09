@@ -3,13 +3,16 @@ import time
 import os
 import re
 import json
-from typing import Optional, cast
+from typing import Optional, cast, TypeVar, ParamSpec, Callable, Concatenate
 from pathlib import Path
 #from dataclasses import dataclass
 
 from .common import *
 from . import retroarch
 from . import pil
+
+R = TypeVar('R')
+P = ParamSpec('P')
 
 os.chdir(Path(__file__).parent)
 
@@ -169,22 +172,49 @@ class Symbols(dict[str, int]):
         for addr_str, name in matches:
             self[name] = int(addr_str, 16)
 
-SCREEN_WIDTH_TILES = 20
+
+next_gsmemo_id = 0
+def gsmemo(orig: Callable[Concatenate['GameState', P], R]) -> Callable[Concatenate['GameState', P], R]:
+    global next_gsmemo_id
+    my_id = next_gsmemo_id
+    next_gsmemo_id += 1
+
 class GameState:
     def __init__(self):
         self.read_mem = retroarch.read_mem
         self.symbols = Symbols()
-    def pos(self) -> tuple[int, int]:
+        self.cache: list[Any] = [None] * next_gsmemo_id
+    @gsmemo
+    def camera_pos(self) -> tuple[int, int]:
         x, y = self.read_mem(self.symbols['wYCoord'], 2)
         return x, y
-    def collision(self) -> list[int]:
+    @gsmemo
+    def tile_map(self) -> bytes:
+        return self.read_mem(self.symbols['wTileMap'], SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES)
+    @gsmemo
+    def collision_data(self) -> bytes:
         collision_ptr, = struct.unpack('<H', self.read_mem(self.symbols['wTilesetCollisionPtr'], 2))
         data = self.read_mem(collision_ptr, 256, short_ok=True)
         data = data[:data.index(b'\xff')]
-        return list(data)
+        return data
+    @gsmemo
+    def passable_by_tile_loc(self) -> bytearray:
+        passable_by_id = bytearray(256)
+        passable_by_loc = bytearray(SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES)
+        for tile in self.collision_data():
+            passable_by_id[tile] = 1
+        for loc, tile_id in enumerate(self.tile_map()):
+            passable_by_loc[loc] = passable_by_id[tile_id]
+        return passable_by_loc
+    @gsmemo
+    def player_pos(self) -> tuple[int, int]:
+        x, y = self.camera_pos()
+        return x + 8, y + 9
+    @gsmemo
+    def passable_by_supertile_loc(self) -> bytearray:
+        asdf()
+
 
 game_state = GameState()
-print(game_state.pos())
-print(game_state.collision())
-print(pil.annotate_screenshot(retroarch.screenshot()))
+print(pil.annotate_screenshot(retroarch.screenshot(), game_state.passable_by_supertile_loc()))
 #if __name__ == '__main__': main()

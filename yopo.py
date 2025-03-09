@@ -1,5 +1,3 @@
-__package__ = 'poyo'
-
 import socket
 import threading
 import struct
@@ -15,9 +13,9 @@ from typing import Iterable, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 from dataclasses import dataclass
 
-from .common import *
-from . import retroarch
-from .retroarch import read_mem
+from poyo.common import *
+from poyo import retroarch
+from poyo.retroarch import read_mem
 
 os.chdir(Path(__file__).parent)
 

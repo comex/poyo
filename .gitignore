@@ -1,2 +1,4 @@
 api_key.txt
 .*.sw*
+__pycache__
+/log

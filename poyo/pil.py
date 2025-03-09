@@ -3,12 +3,12 @@ from .common import *
 
 
 STATE_TO_COLOR = {
-    TileState.IMPASSABLE: ('#00000080', '#ff0000'),
-    TileState.PASSABLE:   ('#00000080', '#0000ff'),
-    TileState.REACHABLE:  ('#00000080', '#00ff80'),
-    TileState.LEDGE:      ('#00000080', '#00ff80'), # '#ff00ff'),
+    TileState.IMPASSABLE: ('#00000080', '#ff0000', '#ffffff'),
+    TileState.PASSABLE:   ('#00000080', '#0000ff', '#000000'),
+    TileState.REACHABLE:  ('#00000080', '#00ff80', '#000000'),
+    TileState.LEDGE:      ('#00000080', '#00ff80', '#000000'),
     # ^ for now, don't tell the model what ledges are
-    TileState.HERE:       ('#00000080', '#ffffff'),
+    TileState.HERE:       ('#00000080', '#ffffff', '#000000'),
 }
 SCALE_FACTOR = 4
 JUST_DRAW_TILES = False
@@ -25,7 +25,11 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
             #resample=Image.Resampling.NEAREST,
         )
         draw = ImageDraw.Draw(big, 'RGBA')
+
         font_size = 16
+        anchor = 'mm'
+        stroke_width = 1
+
         step = 1 if JUST_DRAW_TILES else 2
         xt_min, yt_min = 0, 1
         xt_max, yt_max = SCREEN_WIDTH_TILES, SCREEN_HEIGHT_TILES
@@ -39,48 +43,64 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
                 tile = tile_map[xt, yt]
                 is_map = tile <= 0x5f
                 if JUST_DRAW_TILES:
-                    x_off = xt * TILE_WIDTH_PX * SCALE_FACTOR
-                    y_off = yt * TILE_HEIGHT_PX * SCALE_FACTOR
+                    tile_tl_x = xt * TILE_WIDTH_PX * SCALE_FACTOR
+                    tile_tl_y = yt * TILE_HEIGHT_PX * SCALE_FACTOR
                     text = f'{xt},{yt}=\n${tile_map[xt,yt]:x}'
                     bg_color = '#00000080'
                     fg_color = 'white' if is_map else 'red'
+                    stroke_color = 'black'
                     draw_text = True
                 else:
                     if not is_map:
                         continue
 
-                    x_off = xt * TILE_WIDTH_PX * SCALE_FACTOR
-                    y_off = (yt - 1) * TILE_HEIGHT_PX * SCALE_FACTOR
+                    tile_tl_x = xt * TILE_WIDTH_PX * SCALE_FACTOR
+                    tile_tl_y = (yt - 1) * TILE_HEIGHT_PX * SCALE_FACTOR
                     xpos, ypos = camera_pos[0] + xt // 2, camera_pos[1] + yt // 2
                     text = f'{xpos},\n{ypos}'
 
                     state = reachable_state[xt, yt]
-                    bg_color, fg_color = STATE_TO_COLOR[state]
+                    bg_color, fg_color, stroke_color = STATE_TO_COLOR[state]
 
                     draw_text = True
                 if draw_text:
+                    text_anchor_x = tile_tl_x + (TILE_WIDTH_PX * SCALE_FACTOR * 2 // 2)
+                    text_anchor_y = tile_tl_y + (TILE_HEIGHT_PX * SCALE_FACTOR * 2 // 2)
                     # ew, why do we need to render twice (to get bbox and then for real)
-                    bb_x1, bb_y1, bb_x2, bb_y2 = draw.textbbox((x_off, y_off), text, font_size=font_size)
+                    bb_x1, bb_y1, bb_x2, bb_y2 = draw.textbbox(
+                        (text_anchor_x, text_anchor_y),
+                        text,
+                        anchor=anchor,
+                        font_size=font_size,
+                        stroke_width=stroke_width,
+                    )
                     # pad
                     bb_x1 -= 2; bb_y1 -= 2; bb_x2 += 2; bb_y2 += 0
                     # Shift so that text is exactly hitting the top left corner:
-                    x_adjust = x_off - bb_x1
-                    y_adjust = y_off - bb_y1
+                    # (no longer now that it's centered)
+                    x_adjust = 0 # tile_tl_x - bb_x1
+                    y_adjust = 0 # tile_tl_y - bb_y1
                     
                     # text background
-                    draw.rectangle((bb_x1 + x_adjust, bb_y1 + y_adjust,
-                                    bb_x2 + x_adjust, bb_y2 + y_adjust),
-                                   fill=bg_color)
-                    draw.text((x_off + x_adjust, y_off + y_adjust),
-                              text,
-                              fill=fg_color,
-                              font_size=font_size)
+                    if 0:
+                        draw.rectangle((bb_x1 + x_adjust, bb_y1 + y_adjust,
+                                        bb_x2 + x_adjust, bb_y2 + y_adjust),
+                                       fill=bg_color)
+                    draw.text(
+                        (text_anchor_x + x_adjust, text_anchor_y + y_adjust),
+                        text,
+                        anchor=anchor,
+                        fill=fg_color,
+                        font_size=font_size,
+                        stroke_width=stroke_width,
+                        stroke_fill=stroke_color,
+                    )
 
                 # grid rect
-                draw.rectangle((x_off,
-                                y_off,
-                                x_off + 2 * TILE_WIDTH_PX * SCALE_FACTOR,
-                                y_off + 2 * TILE_WIDTH_PX * SCALE_FACTOR),
+                draw.rectangle((tile_tl_x,
+                                tile_tl_y,
+                                tile_tl_x + 2 * TILE_WIDTH_PX * SCALE_FACTOR,
+                                tile_tl_y + 2 * TILE_WIDTH_PX * SCALE_FACTOR),
                                outline='black')
         big.save(out_path)
         #b = time.time()

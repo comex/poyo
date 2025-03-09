@@ -7,6 +7,8 @@ import tempfile
 import traceback
 import datetime
 import os
+import re
+import ast
 from typing import Iterable, Any, Optional, TYPE_CHECKING
 from pathlib import Path
 from dataclasses import dataclass
@@ -18,7 +20,7 @@ import google.genai # :( this is super slow
 _b = time.time()
 print('genai import time is', _b-_a)
 
-from google.genai.types import PartUnionDict, Part, GenerateContentConfig, Tool, FunctionDeclaration, Schema, Type as SType
+from google.genai.types import PartUnionDict, Part, GenerateContentConfig, Tool, FunctionDeclaration, Schema, Type as SType, Content
 
 import imageio.v3 as iio
 
@@ -132,56 +134,122 @@ def clear_pad():
     print('clear_pad')
     pad_send(PadState())
 
-BUTTON_PRESS_FD = lambda: FunctionDeclaration(
-    name='button_press',
-    description='Press one or more buttons in the emulated game.  Buttons will be pressed sequentially for a duration of 1 second.  Instead of a button, you can also pass "wait" to just wait 1 second without pressing anything.',
-    parameters=Schema(
-        type=SType.OBJECT,
-        properties={
-            'buttons': Schema(
-                type=SType.ARRAY,
-                min_items=1,
-                items=Schema(
-                    type=SType.STRING,
-                    format='enum',
-                    enum=['up', 'down', 'left', 'right', 'a', 'b', 'start', 'select', 'wait'],
-                ),
-            ),
-        },
-        required=['buttons'],
-    ),
+# BUTTON_PRESS_FD = lambda: FunctionDeclaration(
+#     name='button_press',
+#     description='Press one or more buttons in the emulated game.  Buttons will be pressed sequentially for a duration of 1 second.  Instead of a button, you can also pass "wait" to just wait 1 second without pressing anything.',
+#     parameters=Schema(
+#         type=SType.OBJECT,
+#         properties={
+#             'buttons': Schema(
+#                 type=SType.ARRAY,
+#                 min_items=1,
+#                 items=Schema(
+#                     type=SType.STRING,
+#                     format='enum',
+#                     enum=['up', 'down', 'left', 'right', 'a', 'b', 'start', 'select', 'wait'],
+#                 ),
+#             ),
+#         },
+#         required=['buttons'],
+#     ),
 
-)
+# )
+
+# why not just pickle it or something? because I want to be able to edit it if desired
+def parse_log_bit(bit: str, ret: list[Content], parts: list[Part]) -> None:
+    m = re.fullmatch(r'^20.*?  ([^:]*):(.*)', bit, flags=re.S)
+    if not m:
+        raise Exception('bad format 1')
+    action, rest = m.groups()
+    #print('^^', action)
+    match action:
+        case 'Sending':
+            text = ast.literal_eval(rest)
+            parts.append(Part.from_text(text=text))
+        case 'Sending image':
+            assert '/' not in rest
+            image = log_dir / rest.strip()
+            parts.append(Part.from_bytes(data=image.read_bytes(), mime_type='image/png'))
+        case 'Response':
+            resp = rest.replace('\n> ', '\n')
+            assert resp.startswith('\n')
+            resp = resp[1:]
+            if not parts:
+                raise Exception('No input for this response')
+            ret.append(Content(role='user', parts=parts))
+            parts.clear()
+            ret.append(Content(role='model', parts=[Part.from_text(text=resp)]))
+        case 'Loading log':
+            m = re.fullmatch(r'^([^/]*) \(([0-9]+)\)$', rest.strip())
+            assert m
+            log_name, log_size = m.groups()
+            ret.extend(parse_log(log_dir / log_name, int(log_size)))
+        case _:
+            raise Exception(f'Unknown action {action!r}')
+
+
+def parse_log(path: Path, size: int) -> list[Content]:
+    with open(path, 'rb') as fp:
+        data = fp.read(size)
+        assert len(data) == size
+        text = data.decode('utf-8')
+        bits = re.split(r'\n(?!>)', text)
+        ret: list[Content] = []
+        parts: list[Part] = []
+        for bit in bits:
+            bit = bit.strip()
+            if not bit:
+                continue
+            try:
+                parse_log_bit(bit, ret, parts)
+            except:
+                print('** while parsing bit:')
+                print(bit)
+                print('**')
+                raise
+        if parts:
+            print('** Warning: Ignoring leftover send parts:', parts)
+        return ret
 next_log_id = 1
 class ChatWrap:
-    def __init__(self):
+    def __init__(self, base_log_path: Optional[Path] = None):
         global next_log_id
         gac = google.genai.Client(
             api_key=open('api_key.txt').read().strip(),
             http_options={'api_version':'v1alpha'}
         )
-        config = GenerateContentConfig(
-            tools=[
-                Tool(
-                    function_declarations=[
-                        BUTTON_PRESS_FD(),
-                    ]
-                )
-            ]
-        )
-        self.chat = gac.chats.create(
-            model='gemini-2.0-flash-thinking-exp',
-            config=config
-        )
+        # config = GenerateContentConfig(
+        #     tools=[
+        #         Tool(
+        #             function_declarations=[
+        #                 BUTTON_PRESS_FD(),
+        #             ]
+        #         )
+        #     ]
+        # )
         self.log_path, next_log_id = get_unique_path(next_log_id, log_dir, 'log', 2, '.txt')
         self.log_fp = self.log_path.open('w')
         print(f'Logging to {self.log_path}')
+        if base_log_path is not None:
+            history = self.load_log(base_log_path)
+        else:
+            history = []
+        self.chat = gac.chats.create(
+            model='gemini-2.0-flash-thinking-exp',
+            # config=config
+            history=history
+        )
     def log(self, what: str, add_time: bool = True) -> None:
         if add_time:
             now = str(datetime.datetime.now())
             what = f'{now}  {what}'
         print(what, end='', flush=True)
         print(what, end='', flush=True, file=self.log_fp)
+    def load_log(self, path: Path) -> list[Content]:
+        size = path.stat().st_size
+        self.log(f'Loading log: {path.name} ({size})\n')
+        return parse_log(path, size)
+
     def send(self, text: str, image: Optional[Path] = None) -> None:
         self.log(f'Sending: {text!r}\n')
         if image:
@@ -203,12 +271,29 @@ class ChatWrap:
         self.log('\n', add_time=False)
 
 INTRO_TEXT = '''
-You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the game as images, and you can control the game using the button_press function call.  Your job is to beat the game.
+You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
+
+After receiving each screenshot, you should respond in two parts.  First, explain your current thinking.  Then, you MUST end with a specially-formatted line starting with "ACTIONS:" followed by a JSON array of actions.  Each action is a string.
+
+The following actions are available (each button will be pressed for 1 second):
+'a': press A
+'b': press B
+'up': press up on the D-pad
+'left': press left on the D-pad
+'down': press down on the D-pad
+'right': press right on the D-pad
+'select': press select
+'start': press start
+
+Examples:
+ACTIONS: ['a']
+ACTIONS: ['right', 'right', 'right']
 '''
 
 def main():
     #do_chat()
-    cw = ChatWrap()
+    cw = ChatWrap(base_log_path=log_dir / 'log07.txt')
+    return
     cw.send(INTRO_TEXT)
     ss = screenshot()
     cw.send('Current screenshot:', image=ss)

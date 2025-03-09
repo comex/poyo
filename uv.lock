@@ -285,12 +285,14 @@ source = { virtual = "." }
 dependencies = [
     { name = "google-genai" },
     { name = "imageio" },
+    { name = "pillow" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "google-genai", specifier = ">=1.5.0" },
     { name = "imageio", specifier = ">=2.37.0" },
+    { name = "pillow", specifier = ">=11.1.0" },
 ]
 
 [[package]]

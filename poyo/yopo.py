@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .common import *
 from . import retroarch
-from .retroarch import read_mem
+from . import pil
 
 os.chdir(Path(__file__).parent)
 
@@ -169,20 +169,22 @@ class Symbols(dict[str, int]):
         for addr_str, name in matches:
             self[name] = int(addr_str, 16)
 
-SCREEN_WIDTH = 20
+SCREEN_WIDTH_TILES = 20
 class GameState:
     def __init__(self):
-        self.read_mem = read_mem
+        self.read_mem = retroarch.read_mem
         self.symbols = Symbols()
     def pos(self) -> tuple[int, int]:
-        x, y = read_mem(self.symbols['wYCoord'], 2)
+        x, y = self.read_mem(self.symbols['wYCoord'], 2)
         return x, y
     def collision(self) -> list[int]:
-        collision_ptr, = struct.unpack('<H', read_mem(self.symbols['wTilesetCollisionPtr'], 2))
-        data = read_mem(collision_ptr, 256, short_ok=True)
+        collision_ptr, = struct.unpack('<H', self.read_mem(self.symbols['wTilesetCollisionPtr'], 2))
+        data = self.read_mem(collision_ptr, 256, short_ok=True)
         data = data[:data.index(b'\xff')]
         return list(data)
+
 game_state = GameState()
 print(game_state.pos())
 print(game_state.collision())
+print(pil.annotate_screenshot(retroarch.screenshot()))
 #if __name__ == '__main__': main()

@@ -2,7 +2,7 @@ from pathlib import Path
 from .common import *
 
 SCALE_FACTOR = 6
-def annotate_screenshot(path: Path, passable_by_supertile_loc: bytearray) -> Path:
+def annotate_screenshot(path: Path, reachable_state: UsefulTileAccess[TileState]) -> Path:
     out_path = path.with_suffix('.annotated.png')
     from PIL import Image, ImageDraw
     with Image.open(path) as image:
@@ -18,6 +18,10 @@ def annotate_screenshot(path: Path, passable_by_supertile_loc: bytearray) -> Pat
                 y_off = yst * SUPERTILE_HEIGHT_PX * SCALE_FACTOR
                 text = f'({xst} ,{yst})' # this spacing looks a bit better when rendered
                 font_size = 16
+
+                xt = xst * 2
+                yt = yst * 2 + 1
+                state = reachable_state[xt, yt]
 
                 if passable_by_supertile_loc[yst * SCREN_WIDTH_SUPERTILES + xst]:
                     bg_color = '#00000080'

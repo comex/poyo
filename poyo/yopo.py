@@ -3,16 +3,15 @@ import time
 import os
 import re
 import json
-from typing import Optional, cast, TypeVar, ParamSpec, Callable, Concatenate
+from typing import Optional, cast, TypeVar
+from copy import copy
 from pathlib import Path
+from functools import lru_cache, cache
 #from dataclasses import dataclass
 
 from .common import *
 from . import retroarch
 from . import pil
-
-R = TypeVar('R')
-P = ParamSpec('P')
 
 os.chdir(Path(__file__).parent)
 
@@ -164,6 +163,10 @@ def main():
         print('done.')
 
 class Symbols(dict[str, int]):
+    @staticmethod
+    @cache
+    def instance() -> 'Symbols':
+        return Symbols()
     def __init__(self):
         super().__init__()
         matches = re.findall(r'^\s*\$(....) = (\w[^ ]*)\s*$',
@@ -173,48 +176,82 @@ class Symbols(dict[str, int]):
             self[name] = int(addr_str, 16)
 
 
-next_gsmemo_id = 0
-def gsmemo(orig: Callable[Concatenate['GameState', P], R]) -> Callable[Concatenate['GameState', P], R]:
-    global next_gsmemo_id
-    my_id = next_gsmemo_id
-    next_gsmemo_id += 1
-
-class GameState:
+gsmemo = lru_cache(maxsize=4)
+class GameSnapshot:
     def __init__(self):
         self.read_mem = retroarch.read_mem
-        self.symbols = Symbols()
-        self.cache: list[Any] = [None] * next_gsmemo_id
+        self.symbols = Symbols.instance()
+
     @gsmemo
-    def camera_pos(self) -> tuple[int, int]:
+    def camera_pos(self) -> Coord:
         x, y = self.read_mem(self.symbols['wYCoord'], 2)
         return x, y
+
     @gsmemo
     def tile_map(self) -> bytes:
         return self.read_mem(self.symbols['wTileMap'], SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES)
+
     @gsmemo
     def collision_data(self) -> bytes:
         collision_ptr, = struct.unpack('<H', self.read_mem(self.symbols['wTilesetCollisionPtr'], 2))
         data = self.read_mem(collision_ptr, 256, short_ok=True)
         data = data[:data.index(b'\xff')]
         return data
+
     @gsmemo
-    def passable_by_tile_loc(self) -> bytearray:
+    def passable_by_tile_loc(self) -> TileAccess[int]:
         passable_by_id = bytearray(256)
         passable_by_loc = bytearray(SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES)
         for tile in self.collision_data():
             passable_by_id[tile] = 1
         for loc, tile_id in enumerate(self.tile_map()):
             passable_by_loc[loc] = passable_by_id[tile_id]
-        return passable_by_loc
+        return TileAccess(passable_by_loc)
+
     @gsmemo
-    def player_pos(self) -> tuple[int, int]:
+    def player_pos(self) -> Coord: # not camera-relative
         x, y = self.camera_pos()
         return x + 8, y + 9
-    @gsmemo
-    def passable_by_supertile_loc(self) -> bytearray:
-        asdf()
+
+def can_visit(frum: Coord, to: Coord, passable: TileAccess[int]) -> bool:
+    if not tile_loc_inbounds(*to):
+        return False
+    if passable[to]:
+        return True
+    return False
+
+def reachable_state(gs: GameSnapshot) -> UsefulTileAccess[TileState]:
+    passable = gs.passable_by_tile_loc()
+
+    raw = copy(passable.igs)
+    ret: UsefulTileAccess[TileState] = UsefulTileAccess(cast(list[TileState], raw))
+
+    player_loc = 8, 9
+    ret[player_loc] = TileState.HERE
+
+    REACHABLE = TileState.REACHABLE
+
+    # basic flood fill.
+    todo: list[Coord] = [player_loc]
+    while todo:
+        xt, yt = frum = todo.pop()
+        for to in [
+            (xt - 2, yt),
+            (xt + 2, yt),
+            (xt, yt - 2),
+            (xt, yt + 2),
+        ]:
+            if ret[to] == REACHABLE:
+                continue
+            if can_visit(frum, to, passable):
+                ret[to] = REACHABLE
+                todo.append(to)
+
+    return ret
 
 
-game_state = GameState()
-print(pil.annotate_screenshot(retroarch.screenshot(), game_state.passable_by_supertile_loc()))
+
+
+gs = GameSnapshot()
+print(pil.annotate_screenshot(retroarch.screenshot(), reachable_state(gs)))
 #if __name__ == '__main__': main()

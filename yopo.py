@@ -282,7 +282,13 @@ class ChatWrap:
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
 
-After receiving each screenshot, you should respond in two parts.  First, explain your current thinking.  Then, you MUST end with a specially-formatted line starting with "ACTIONS:" followed by a JSON array of actions.  Each action is a string.
+After receiving each screenshot, you should respond in three parts.
+- First, describe what you see in the screenshot:
+  - For each visible object, briefly describe it and (if it's an overworld object) where it is relative to the player.
+    - Then double-check that the object is still on the screen!
+  - For all text on the screen, recite the entire text.
+- Then, explain your current thinking.
+- Finally, you MUST end with a specially-formatted line starting with "ACTIONS:" followed by a JSON array of actions.  Each action is a string.
 
 The following actions are available (each button will be pressed for 1 second):
 "a": press A
@@ -297,7 +303,9 @@ The following actions are available (each button will be pressed for 1 second):
 
 Examples:
 ACTIONS: ["a"]
-ACTIONS: ["right", "wait", "right", "right"]
+ACTIONS: ["right", "wait", "right"]
+
+There is a limit of 3 actions per response.  To perform any more actions you must wait for the next screenshot.
 '''
 
 Action = str
@@ -316,16 +324,16 @@ def do_action(action: Action) -> None:
             setattr(pad_state, action, True)
         pad_send(pad_state)
         print('Waiting 1 second...', flush=True, end='')
-        time.sleep(1)
+        time.sleep(1 if action == 'wait' else 0.5)
         print('done.')
         pad_send(PadState())
         return
     raise Exception(f'!? {action!r}')
 
 def parse_resp(resp: str) -> Optional[list[Action]]:
-    ms = re.findall('ACTIONS: (.*)', resp)
+    ms = re.findall(r'ACTIONS?: (.*)', resp)
     if not ms:
-        print('[No ACTIONS line: {resp!r}]')
+        print(f'[No ACTIONS line: {resp!r}]')
         return None
     actions = ms[-1]
     try:
@@ -346,11 +354,17 @@ def main():
     #do_chat()
     base_log_path: Optional[Path] = None # log_dir / 'log07.txt'
     cw = ChatWrap(base_log_path)
+    pre_prompt: Optional[str] = None # won't save, but whatever
     while True:
         if not cw.chat.get_history():
             text = INTRO_TEXT
+            assert pre_prompt is None
         else:
-            text = '\nCurrent screenshot:'
+            text = '\n'
+            if pre_prompt is not None:
+                text += pre_prompt
+            text += 'Current screenshot:'
+        pre_prompt = None
         ss = screenshot()
         resp = cw.send(text, ss)
         bad_count = 0
@@ -360,6 +374,10 @@ def main():
                 raise Exception('something is very wrong')
             admonish = '\nCould not parse ACTIONS line out of that response.  Try again.'
             resp = cw.send(admonish, None)
+        if len(actions) > 3:
+            need_actions_admonish = True
+            actions = actions[:3]
+            pre_prompt = f'Too many actions.  Using the first 3 ({json.dumps(actions)}) and ignoring the rest.'
         for action in actions:
             do_action(action)
         print('Waiting 1 more second for any responses...', flush=True, end='')

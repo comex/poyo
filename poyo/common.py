@@ -1,6 +1,6 @@
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Generic, Protocol, Any, cast, TypeVar
+from typing import Generic, Protocol, TypeVar, Iterable
 from enum import IntEnum
 T = TypeVar('T')
 
@@ -52,7 +52,8 @@ class TileState(IntEnum):
     IMPASSABLE = 0
     PASSABLE = 1
     REACHABLE = 2
-    HERE = 3
+    LEDGE = 3
+    HERE = 4
 
 def tile_loc_inbounds(x: int, y: int) -> bool:
     return (
@@ -74,13 +75,18 @@ class TileAccess(Generic[T]):
     def key2index(self, key: Coord) -> int:
         x, y = key
         assert tile_loc_inbounds(x, y), (x, y)
+        assert self.valid_xy(x, y)
         return y * SCREEN_WIDTH_TILES + x
+    def valid_xy(self, x: int, y: int) -> bool:
+        return True
+    def items(self) -> Iterable[tuple[Coord, T]]:
+        for y in range(SCREEN_HEIGHT_TILES):
+            for x in range(SCREEN_WIDTH_TILES):
+                if self.valid_xy(x, y):
+                    tup = x, y
+                    yield (tup, self[tup])
 
 class UsefulTileAccess(Generic[T], TileAccess[T]):
-    def key2index(self, key: Coord) -> int:
-        x, y = key
-        assert tile_loc_inbounds(x, y), (x, y)
-        assert x % 2 == 0, (x, y)
-        assert y % 2 == 1, (x, y)
-        return y * SCREEN_WIDTH_TILES + x
+    def valid_xy(self, x: int, y: int) -> bool:
+        return x % 2 == 0 and y % 2 == 1
 

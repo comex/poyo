@@ -188,8 +188,9 @@ class GameSnapshot:
         return x, y
 
     @gsmemo
-    def tile_map(self) -> bytearray:
-        return bytearray(self.read_mem(self.symbols['wTileMap'], SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES))
+    def tile_map(self) -> TileAccess[int]:
+        raw = bytearray(self.read_mem(self.symbols['wTileMap'], SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES))
+        return TileAccess(raw)
 
     @gsmemo
     def collision_data(self) -> bytes:
@@ -199,14 +200,11 @@ class GameSnapshot:
         return data
 
     @gsmemo
-    def passable_by_tile_loc(self) -> TileAccess[int]:
-        passable_by_id = bytearray(256)
-        passable_by_loc = bytearray(SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES)
-        for tile in self.collision_data():
-            passable_by_id[tile] = 1
-        for loc, tile_id in enumerate(self.tile_map()):
-            passable_by_loc[loc] = passable_by_id[tile_id]
-        return TileAccess(passable_by_loc)
+    def passable_map(self) -> bytearray:
+        ret = bytearray(256)
+        for tile_id in self.collision_data():
+            ret[tile_id] = 1
+        return ret
 
     @gsmemo
     def player_pos(self) -> Coord: # not camera-relative
@@ -217,23 +215,56 @@ class GameSnapshot:
     def in_battle(self) -> int:
         return self.read_mem(self.symbols['wIsInBattle'], 1)[0]
 
-def can_visit(frum: Coord, to: Coord, passable: TileAccess[int]) -> bool:
+# Based on LedgeTiles from pokered
+ledge_tile_to_dir = {
+    0x36: (0, 2),
+    0x37: (0, 2),
+    0x27: (-2, 0),
+    0x0d: (2, 0),
+    0x1d: (2, 0),
+}
+def can_visit(frum: Coord, to: Coord, passable_map: bytearray, tile_map: TileAccess[int]) -> Optional[TileState]:
     if not tile_loc_inbounds(*to):
-        return False
-    if passable[to]:
-        return True
-    return False
+        return None
+    frum_tile, to_tile = tile_map[frum], tile_map[to]
+    frum_ledge_dir = ledge_tile_to_dir.get(frum_tile)
+    to_ledge_dir = ledge_tile_to_dir.get(to_tile)
+    if ledge_dir := frum_ledge_dir or to_ledge_dir:
+        if (
+            to[0] == frum[0] + ledge_dir[0] and
+            to[1] == frum[1] + ledge_dir[1]
+        ):
+            assert not (frum_ledge_dir and to_ledge_dir)
+            if to_ledge_dir:
+                if frum_tile in (0x2c, 0x39):
+                    #print('can_visit: ok for ledge jump "step 1":', frum, to)
+                    return TileState.LEDGE
+                else:
+                    print('can_visit: oddly no good for ledge jump "step 1":', frum, to, hex(frum_tile), hex(to_tile))
+            else:
+                if passable_map[to_tile]:
+                    #print('can_visit: ok for ledge jump "step 2":', frum, to)
+                    return TileState.REACHABLE
+                else:
+                    print('can_visit: oddly no good for ledge jump "step 2":', frum, to, hex(frum_tile), hex(to_tile))
+
+        return None
+    if passable_map[to_tile]:
+        return TileState.REACHABLE
+    return None
 
 def reachable_state(gs: GameSnapshot) -> UsefulTileAccess[TileState]:
-    passable = gs.passable_by_tile_loc()
+    tile_map = gs.tile_map()
+    passable_map = gs.passable_map()
 
-    raw = copy(passable.igs)
-    ret: UsefulTileAccess[TileState] = UsefulTileAccess(cast(list[TileState], raw))
+    ret: UsefulTileAccess[TileState] = UsefulTileAccess(
+        cast(list[TileState], bytearray(SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES)))
+    for loc, tile_id in tile_map.items():
+        if passable_map[tile_id] and ret.valid_xy(*loc):
+            ret[loc] = TileState.PASSABLE
 
     player_loc = 8, 9
     ret[player_loc] = TileState.HERE
-
-    REACHABLE = TileState.REACHABLE
 
     # basic flood fill.
     todo: list[Coord] = [player_loc]
@@ -245,8 +276,9 @@ def reachable_state(gs: GameSnapshot) -> UsefulTileAccess[TileState]:
             (xt, yt - 2),
             (xt, yt + 2),
         ]:
-            if can_visit(frum, to, passable) and ret[to] < REACHABLE:
-                ret[to] = REACHABLE
+            new_state = can_visit(frum, to, passable_map, tile_map)
+            if new_state is not None and new_state > ret[to]:
+                ret[to] = new_state
                 todo.append(to)
 
     return ret
@@ -261,12 +293,13 @@ def xtime(f: Callable[[], T]) -> T:
 
 
 gs = GameSnapshot()
+#print([hex(z) for z in gs.collision_data()]); die()
 #print('TB:', gs.read_mem(gs.symbols['wTextBoxID'], 1)[0])
 print(pil.annotate_screenshot(
     path=retroarch.screenshot(),
     camera_pos=gs.camera_pos(),
     reachable_state=reachable_state(gs),
-    tile_map=TileAccess(gs.tile_map()),
+    tile_map=gs.tile_map(),
     skip_tiles=bool(gs.in_battle()),
 ))
 #if __name__ == '__main__': main()

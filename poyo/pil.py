@@ -6,6 +6,8 @@ STATE_TO_COLOR = {
     TileState.IMPASSABLE: ('#00000080', '#ff0000'),
     TileState.PASSABLE:   ('#00000080', '#0000ff'),
     TileState.REACHABLE:  ('#00000080', '#00ff80'),
+    TileState.LEDGE:      ('#00000080', '#00ff80'), # '#ff00ff'),
+    # ^ for now, don't tell the model what ledges are
     TileState.HERE:       ('#00000080', '#ffffff'),
 }
 SCALE_FACTOR = 6
@@ -36,7 +38,7 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
                 if JUST_DRAW_TILES:
                     x_off = xt * TILE_WIDTH_PX * SCALE_FACTOR
                     y_off = yt * TILE_HEIGHT_PX * SCALE_FACTOR
-                    text = f'{xt},{yt}=\n{tile_map[xt,yt]}'
+                    text = f'{xt},{yt}=\n${tile_map[xt,yt]:x}'
                     bg_color = '#00000080'
                     fg_color = 'white' if is_map else 'red'
                     draw_text = True

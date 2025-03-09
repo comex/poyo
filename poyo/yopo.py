@@ -3,7 +3,7 @@ import time
 import os
 import re
 import json
-from typing import Optional, cast, TypeVar
+from typing import Optional, cast, TypeVar, Callable
 from copy import copy
 from pathlib import Path
 from functools import lru_cache, cache
@@ -188,8 +188,8 @@ class GameSnapshot:
         return x, y
 
     @gsmemo
-    def tile_map(self) -> bytes:
-        return self.read_mem(self.symbols['wTileMap'], SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES)
+    def tile_map(self) -> bytearray:
+        return bytearray(self.read_mem(self.symbols['wTileMap'], SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES))
 
     @gsmemo
     def collision_data(self) -> bytes:
@@ -210,8 +210,12 @@ class GameSnapshot:
 
     @gsmemo
     def player_pos(self) -> Coord: # not camera-relative
-        x, y = self.camera_pos()
+        y, x = self.camera_pos()
         return x + 8, y + 9
+
+    @gsmemo
+    def in_battle(self) -> int:
+        return self.read_mem(self.symbols['wIsInBattle'], 1)[0]
 
 def can_visit(frum: Coord, to: Coord, passable: TileAccess[int]) -> bool:
     if not tile_loc_inbounds(*to):
@@ -241,17 +245,28 @@ def reachable_state(gs: GameSnapshot) -> UsefulTileAccess[TileState]:
             (xt, yt - 2),
             (xt, yt + 2),
         ]:
-            if ret[to] == REACHABLE:
-                continue
-            if can_visit(frum, to, passable):
+            if can_visit(frum, to, passable) and ret[to] < REACHABLE:
                 ret[to] = REACHABLE
                 todo.append(to)
 
     return ret
 
 
+def xtime(f: Callable[[], T]) -> T:
+    a = time.time()
+    ret = f()
+    b = time.time()
+    print('xtime:', b - a)
+    return ret
 
 
 gs = GameSnapshot()
-print(pil.annotate_screenshot(retroarch.screenshot(), reachable_state(gs)))
+#print('TB:', gs.read_mem(gs.symbols['wTextBoxID'], 1)[0])
+print(pil.annotate_screenshot(
+    path=retroarch.screenshot(),
+    camera_pos=gs.camera_pos(),
+    reachable_state=reachable_state(gs),
+    tile_map=TileAccess(gs.tile_map()),
+    skip_tiles=bool(gs.in_battle()),
+))
 #if __name__ == '__main__': main()

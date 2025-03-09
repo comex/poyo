@@ -48,19 +48,11 @@ SCREEN_HEIGHT_TILES = 18
 TILE_WIDTH_PX = 8
 TILE_HEIGHT_PX = 8
 
-SUPERTILE_WIDTH_TILES = 2
-SUPERTILE_HEIGHT_TILES = 2
-
-SCREEN_WIDTH_SUPERTILES = assert_int(SCREEN_WIDTH_TILES / SUPERTILE_WIDTH_TILES)
-SCREEN_HEIGHT_SUPERTILES = assert_int(SCREEN_HEIGHT_TILES / SUPERTILE_HEIGHT_TILES)
-SUPERTILE_WIDTH_PX = TILE_WIDTH_PX * SUPERTILE_WIDTH_TILES
-SUPERTILE_HEIGHT_PX = TILE_HEIGHT_PX * SUPERTILE_HEIGHT_TILES
-
 class TileState(IntEnum):
     IMPASSABLE = 0
     PASSABLE = 1
     REACHABLE = 2
-    HERE = 2
+    HERE = 3
 
 def tile_loc_inbounds(x: int, y: int) -> bool:
     return (
@@ -81,14 +73,14 @@ class TileAccess(Generic[T]):
         self.igs[self.key2index(key)] = value
     def key2index(self, key: Coord) -> int:
         x, y = key
-        assert tile_loc_inbounds(x, y)
-        return y * SCREEN_HEIGHT_TILES + x
+        assert tile_loc_inbounds(x, y), (x, y)
+        return y * SCREEN_WIDTH_TILES + x
 
 class UsefulTileAccess(Generic[T], TileAccess[T]):
     def key2index(self, key: Coord) -> int:
         x, y = key
-        assert tile_loc_inbounds(x, y)
-        assert x % 2 == 0
-        assert y % 2 == 1
-        return y * SCREEN_HEIGHT_TILES + x
+        assert tile_loc_inbounds(x, y), (x, y)
+        assert x % 2 == 0, (x, y)
+        assert y % 2 == 1, (x, y)
+        return y * SCREEN_WIDTH_TILES + x
 

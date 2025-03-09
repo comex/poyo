@@ -3,6 +3,7 @@ import time
 import imageio.v3 as iio
 import traceback
 import struct
+import re
 from pathlib import Path
 from typing import Iterable, Any, Optional, TYPE_CHECKING
 import atexit
@@ -40,7 +41,7 @@ def screenshot() -> Path:
                 print('** multiple screenshots?', s)
             path = s[0]
             try:
-                iio.imread(path)
+                iio.imread(path) # type: ignore
             except:
                 traceback.print_exc()
             else:
@@ -83,11 +84,27 @@ def pad_send(state: PadState):
         pad_sock.send(msg)
 
 @atexit.register
-def clear_pad():
+def clear_pad() -> None:
     print('clear_pad')
     pad_send(PadState())
-def read_mem(addr, size):
-    print(rc_send_and_recv(f'READ_CORE_MEMORY {addr:x} {size}'))
+
+def read_mem(addr: int, size: int, short_ok: bool = False) -> bytes:
+    ret = None
+    try:
+        ret = rc_send_and_recv(f'READ_CORE_MEMORY {addr:x} {size}')
+        m = re.fullmatch(r'READ_CORE_MEMORY ([^ ]+) (.*)\n', ret)
+        assert m
+        ret_addr, ret_bytes = m.groups()
+        assert int(ret_addr, 16) == addr
+        data = bytes.fromhex(ret_bytes)
+        assert len(data) <= size
+        if len(data) < size and not short_ok:
+            raise ShortReadError
+        return data
+    except Exception as e:
+        e.add_note(f'in read_mem({addr:#x}, {size}), ret={ret!r}')
+        raise
+
 #if __name__ == '__main__': main()
 #def x():
 #    #print(rc_send_and_recv(f'READ_CORE_MEMORY FF42 2'), rc_send_and_recv(f'READ_CORE_MEMORY FFAE 3'))

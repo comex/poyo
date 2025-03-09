@@ -1,17 +1,11 @@
-import socket
-import threading
 import struct
 import time
-import tempfile
-import traceback
-import datetime
 import os
 import re
 import json
-import traceback
-from typing import Iterable, Any, Optional, TYPE_CHECKING
+from typing import Optional, cast
 from pathlib import Path
-from dataclasses import dataclass
+#from dataclasses import dataclass
 
 from .common import *
 from . import retroarch
@@ -82,7 +76,7 @@ There is a limit of 3 actions per response.  To perform any more actions you mus
 '''
 
 Action = str
-def is_valid_action(a: Action) -> bool:
+def is_valid_action(a: object) -> bool:
     if isinstance(a, str):
         if a in BUTTONS:
             return True
@@ -110,14 +104,17 @@ def parse_resp(resp: str) -> Optional[list[Action]]:
         return None
     actions = ms[-1]
     try:
-        parsed = json.loads(actions)
+        parsed1 = json.loads(actions)
     except json.decoder.JSONDecodeError:
         print(f'[JSON decode failed: {actions!r}]')
         return None
-    if isinstance(parsed, str):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        print(f'[Not a list: {parsed!r}]')
+    parsed: list[object]
+    if isinstance(parsed1, str):
+        parsed = [parsed1]
+    elif isinstance(parsed1, list):
+        parsed = parsed1
+    else:
+        print(f'[Not a list: {parsed1!r}]')
         return None
     if len(parsed) != 1:
         print(f'[Wrong number of actions: {parsed!r}]')
@@ -126,7 +123,7 @@ def parse_resp(resp: str) -> Optional[list[Action]]:
         if not is_valid_action(action):
             print(f'[Invalid action: {action!r} in {parsed!r}]')
             return None
-    return parsed
+    return cast(list[Action], parsed)
 
 def main():
     #do_chat()
@@ -163,6 +160,29 @@ def main():
         time.sleep(1) # 
         print('done.')
 
+class Symbols(dict[str, int]):
+    def __init__(self):
+        super().__init__()
+        matches = re.findall(r'^\s*\$(....) = (\w[^ ]*)\s*$',
+                             Path('../data/pokeyellow.map').read_text(),
+                             flags=re.M)
+        for addr_str, name in matches:
+            self[name] = int(addr_str, 16)
 
-read_mem(0xd360, 2)
+SCREEN_WIDTH = 20
+class GameState:
+    def __init__(self):
+        self.read_mem = read_mem
+        self.symbols = Symbols()
+    def pos(self) -> tuple[int, int]:
+        x, y = read_mem(self.symbols['wYCoord'], 2)
+        return x, y
+    def collision(self) -> list[int]:
+        collision_ptr, = struct.unpack('<H', read_mem(self.symbols['wTilesetCollisionPtr'], 2))
+        data = read_mem(collision_ptr, 256, short_ok=True)
+        data = data[:data.index(b'\xff')]
+        return list(data)
+game_state = GameState()
+print(game_state.pos())
+print(game_state.collision())
 #if __name__ == '__main__': main()

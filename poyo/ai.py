@@ -2,7 +2,7 @@ import datetime
 import time
 import re
 import ast
-from typing import Optional
+from typing import Optional, Iterator
 from pathlib import Path
 
 from common import get_unique_path, log_dir
@@ -12,7 +12,8 @@ import google.genai # :( this is super slow
 _b = time.time()
 print('genai import time is', _b-_a)
 
-from google.genai.types import PartUnionDict, Part, GenerateContentConfig, Tool, FunctionDeclaration, Schema, Type as SType, Content
+from google.genai.types import PartUnionDict, Part, Content, GenerateContentResponse
+# GenerateContentConfig,  FunctionDeclaration, Schema, Type as SType, Content
 
 # why not just pickle it or something? because I want to be able to edit it if desired
 def parse_log_bit(bit: str, ret: list[Content], parts: list[Part]) -> None:
@@ -119,7 +120,8 @@ class ChatWrap:
         self.log(f'Response:\n> ')
         last_was_nl = False
         full_text = ''
-        for chunk in self.chat.send_message_stream(parts):
+        it: Iterator[GenerateContentResponse] = self.chat.send_message_stream(parts)
+        for chunk in it:
             text = chunk.text or ''
             #print('?', chunk, repr(chunk.text))
             full_text += text

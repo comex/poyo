@@ -29,3 +29,6 @@ class PadState:
 
     def as_list(self) -> list[str]:
         return [name for name in BUTTONS if getattr(self, name)]
+
+class ShortReadError(Exception):
+    pass

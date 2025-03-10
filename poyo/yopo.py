@@ -68,7 +68,7 @@ After receiving each screenshot, you should respond in three parts.
 - First, describe anything that is NEW or CHANGED in the screenshot:
   - For each new or changed visible object, briefly describe it and state its coordinates.
   - For all new or changed game text on the screen (NOT coordinates from the overlay), recite the entire text.
-- Then, explain your current thinking.
+- Then, think step by step about a plan.  Explain your current thinking in detail.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action in quotes.
 
 The following actions are available (each button will be pressed for 0.5 seconds):

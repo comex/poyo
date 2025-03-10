@@ -57,18 +57,21 @@ def debug_http():
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
 
-While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates, in a text color as follows:
+While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates prefixed by a letter.  The letter means:
 
-- White means the square is the player's current position.
-- Red means the square is impassable.
-- Green means the square is passable *and* the entire path from the player's current position to that square is visible on-screen.
-- Blue means the square is passable but the path from the current position to that square is either off-screen or nonexistent.
+- H means the square is the player's current position.
+- X means the square is impassable.
+- E means the square is passable *and* the entire path from the player's current position to that square is visible on-screen.
+- P means the square is passable but the path from the current position to that square is either off-screen or nonexistent.
+
+Example:
+"E11,9" is the label for the grid square at (x=11, y=9) if it is passable and the path is visible on-screen.
 
 After receiving each screenshot, you should respond in three parts.
-- First, describe anything that is NEW or CHANGED in the screenshot:
-  - For each new or changed visible object, briefly describe it and state its coordinates.
-  - For all new or changed game text on the screen (NOT coordinates from the overlay), recite the entire text.
-- Then, think step by step about a plan.  Explain your current thinking in detail.
+- First, describe everything in the screenshot:
+  - For each visible reachable object, briefly describe it and state its coordinates.
+  - For all game text on the screen (NOT coordinates from the overlay), recite the entire text.
+- Then, explain your current thinking.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action in quotes.
 
 The following actions are available (each button will be pressed for 0.5 seconds):

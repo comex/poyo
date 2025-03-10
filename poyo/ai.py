@@ -78,7 +78,7 @@ next_log_id = 1
 @cache
 def gac() -> google.genai.Client:
     return google.genai.Client(
-        api_key=open('api_key.txt').read().strip(),
+        api_key=open('api_key_free.txt').read().strip(),
         http_options={'api_version':'v1alpha'}
     )
 
@@ -182,8 +182,8 @@ class ChatWrap:
         else:
             history = []
         self.chat = gac().chats.create(
-            #model='gemini-2.0-flash-thinking-exp',
-            model='gemini-2.0-pro-exp-02-05',
+            model='gemini-2.0-flash-thinking-exp',
+            # model='gemini-2.0-pro-exp-02-05',
             # config=config
             history=history
         )

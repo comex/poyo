@@ -1,11 +1,12 @@
+# TODO: REMOVE /etc/hosts ENTRY
 import datetime
 import time
 import re
-import ast
 from typing import Optional, Iterator
 from pathlib import Path
 from functools import cache
-# import hashlib
+import hashlib
+import traceback
 
 from .common import get_unique_path, log_dir
 
@@ -82,37 +83,35 @@ def gac() -> google.genai.Client:
         http_options={'api_version':'v1alpha'}
     )
 
-# @cache
-# def sha256_of_path(path: Path) -> str:
-#     return hashlib.sha256(path.read_bytes()).hexdigest()
+@cache
+def sha256_of_path(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
-PREPOPULATE = False
 class FileManager:
     def __init__(self):
         self.gac = gac()
         self.files: dict[str, File] = {}
 
-        if PREPOPULATE:
-            self.populate_from_list()
-    def populate_from_list(self) -> None:
+        self.delete_from_list()
+    def delete_from_list(self) -> None:
         print('FileManager: list files start')
         for file in self.gac.files.list():
-            print('got file', file)
+            print('will delete file', file)
             assert file.name is not None
-            assert file.sha256_hash is not None
-            assert file.expiration_time is not None
-            self.files[file.name] = file
+            self.gac.files.delete(name=file.name)
+            print('did delete file', file)
         print('FileManager: list files done')
     def get(self, path: Path) -> Optional[File]:
         name = self.google_name_for_path(path)
         file = self.files.get(name)
-        if file is None and not PREPOPULATE:
+        if file is None:
             try:
                 file = self.gac.files.get(name=name)
             except ClientError as e:
                 if e.status != 'PERMISSION_DENIED':
-                    raise e
+                    raise
                 file = None
+        print('>> got', file)
         if file is None:
             print(f'FileManager: no existing file: {path!r} / {name!r}')
             return None
@@ -148,18 +147,39 @@ class FileManager:
             return exfile
         a = time.time()
         config = UploadFileConfig(
-            name=self.google_name_for_path(path),
+            name=name,
             mime_type='image/png',
         )
-        file: File = self.gac.files.upload(file=path, config=config) # type: ignore
+        print(f'FileManager: uploading {path} as {name}')
+        retry = 0
+        while True:
+            retry += 1
+            try:
+                file: File = self.gac.files.upload(file=path, config=config) # type: ignore
+            except ClientError as e:
+                if e.status != 'ALREADY_EXISTS' or retry >= 5:
+                    raise
+                traceback.print_exc()
+                print(f'FileManager: must delete {name}')
+                try:
+                    self.gac.files.delete(name=name)
+                except ClientError as f:
+                    traceback.print_exc()
+                else:
+                    print(f'FileManager: successfully deleted {name}')
+            else:
+                break
+
         b = time.time()
-        print(f'FileManager: uploaded {path} in {b - a}')
+        print(f'FileManager: uploaded in {b - a}')
         assert self.check(file, path)
         self.files[name] = file
         return file
 
     def google_name_for_path(self, path: Path) -> str:
-        return path.name.replace('.', '-')
+        #return path.name.replace('.', '-')
+        # TODO: deal with InvalidArgument when uploads are interrupted 
+        return 'files/p10-' + sha256_of_path(path)
 
 class ChatWrap:
     def __init__(self, base_log_path: Optional[Path] = None):

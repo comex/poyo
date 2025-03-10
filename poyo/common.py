@@ -7,7 +7,7 @@ T = TypeVar('T')
 
 Coord = tuple[int, int]
 
-log_dir = Path('~/Documents/poyo-log').expanduser()
+log_dir = (Path(__file__).parent / '../log').resolve()
 
 def get_unique_path(next_id: int, dir: Path, prefix: str, precision: int, suffix: str) -> tuple[Path, int]:
     while True:

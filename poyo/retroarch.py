@@ -23,7 +23,7 @@ def rc_send_and_recv(cmd: str) -> str:
     rc_send(cmd)
     return rc_sock.recv(65536).decode('utf-8')
 
-screenshot_dir = Path('~/Documents/RetroArch/screenshots').expanduser()
+screenshot_dir = (Path(__file__).parent / '../screenshots').resolve()
 def shots() -> Iterable[Path]:
     return screenshot_dir.glob('Pokemon*.png')
 

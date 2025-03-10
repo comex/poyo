@@ -69,7 +69,7 @@ Example:
 
 After receiving each screenshot, you should respond in three parts.
 - First, describe everything in the screenshot:
-  - For each visible reachable object, briefly describe it and state its coordinates.
+  - For each grid square with an identifiable object on it (NOT floor), briefly describe it and state its coordinates.  DO NOT list floor / ground / "empty space" squares or other repetitive squares.
   - For all game text on the screen (NOT coordinates from the overlay), recite the entire text.
 - Then, explain your current thinking.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action in quotes.
@@ -83,12 +83,17 @@ The following actions are available (each button will be pressed for 0.5 seconds
 "right": press right on the D-pad
 "select": press select
 "start": press start
-"wait": press nothing, just wait 1 second
 
 Examples:
 ACTION: "a"
 ACTION: "right"
 '''
+#"wait": press nothing, just wait 1 second
+
+ADMONISH_TEXT = '''
+Could not parse ACTION line out of that response.  Try again.  Make sure NOT to use JSON, except for quoting the individual actions as required.
+For reference, here are your original instructions again:
+''' + INTRO_TEXT
 
 Action = str
 def is_valid_action(a: object) -> bool:
@@ -96,7 +101,7 @@ def is_valid_action(a: object) -> bool:
         if a in BUTTONS:
             return True
         if a == 'wait':
-            return True
+            return False # !
     return False
 
 def do_action(action: Action) -> None:
@@ -106,7 +111,7 @@ def do_action(action: Action) -> None:
             setattr(pad_state, action, True)
         retroarch.pad_send(pad_state)
         print('Waiting 1 second...', flush=True, end='')
-        time.sleep(1 if action == 'wait' else 0.5)
+        time.sleep(1 if action == 'wait' else 0.25)
         print('done.')
         retroarch.pad_send(PadState())
         return
@@ -287,7 +292,7 @@ def main():
             text = '\n'
             if pre_prompt is not None:
                 text += pre_prompt
-            text += 'Current screenshot:'
+            text += 'Action accepted.  Current screenshot:'
         pre_prompt = None
         ss = annotated_screenshot()
         resp = cw.send(text, ss)
@@ -296,7 +301,7 @@ def main():
             bad_count += 1
             if bad_count >= 10:
                 raise Exception('something is very wrong')
-            admonish = '\nCould not parse ACTION line out of that response.  Try again.  Make sure NOT to use JSON, except for quoting the individual actions as required.'
+            admonish = ADMONISH_TEXT
             resp = cw.send(admonish, None)
         #if len(actions) > 3:
         #    need_actions_admonish = True

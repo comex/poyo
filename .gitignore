@@ -1,4 +1,7 @@
 api_key*.txt
 .*.sw*
+.sw*
+yopo.log
 __pycache__
 /log
+/screenshots

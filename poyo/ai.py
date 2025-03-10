@@ -178,7 +178,7 @@ class FileManager:
                 print(f'FileManager: must delete {name}')
                 try:
                     self.gac.files.delete(name=name)
-                except ClientError as f:
+                except ClientError:
                     traceback.print_exc()
                 else:
                     print(f'FileManager: successfully deleted {name}')

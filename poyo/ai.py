@@ -14,7 +14,8 @@ import google.genai # :( this is super slow
 _b = time.time()
 print('genai import time is', _b-_a)
 
-from google.genai.types import PartUnionDict, Part, Content, UserContent, ModelContent, GenerateContentResponse, File
+from google.genai.types import PartUnionDict, Part, Content, UserContent, ModelContent, GenerateContentResponse, UploadFileConfig, File
+from google.genai.errors import ClientError
 # GenerateContentConfig,  FunctionDeclaration, Schema, Type as SType, Content
 
 # why not just pickle it or something? because I want to be able to edit it if desired
@@ -24,23 +25,23 @@ def parse_log_bit(bit: str, ret: list[Content], parts: list[PartUnionDict], file
         raise Exception('bad format 1')
     action, rest = m.groups()
     #print('^^', action)
+    if '\n' in rest:
+        rest = rest.replace('\n> ', '\n')
+        assert rest.startswith('\n')
+        rest = rest[1:]
     match action:
         case 'Sending':
-            text = ast.literal_eval(rest)
-            parts.append(Part.from_text(text=text))
+            parts.append(Part.from_text(text=rest))
         case 'Sending image':
             assert '/' not in rest
             image = log_dir / rest.strip()
             parts.append(file_manager.get_or_upload(image))
         case 'Response':
-            resp = rest.replace('\n> ', '\n')
-            assert resp.startswith('\n')
-            resp = resp[1:]
             if not parts:
                 raise Exception('No input for this response')
             ret.append(UserContent(parts=parts))
             parts.clear()
-            ret.append(ModelContent(parts=[Part.from_text(text=resp)]))
+            ret.append(ModelContent(parts=[Part.from_text(text=rest)]))
         case 'Loading log':
             m = re.fullmatch(r'^([^/]*) \(([0-9]+)\)$', rest.strip())
             assert m
@@ -49,6 +50,7 @@ def parse_log_bit(bit: str, ret: list[Content], parts: list[PartUnionDict], file
         case _:
             raise Exception(f'Unknown action {action!r}')
 
+# XXX: this is dumb, I should be lazily uploading when needed
 def parse_log(path: Path, size: int, file_manager: 'FileManager') -> list[Content]:
     with open(path, 'rb') as fp:
         data = fp.read(size)
@@ -84,10 +86,15 @@ def gac() -> google.genai.Client:
 # def sha256_of_path(path: Path) -> str:
 #     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+PREPOPULATE = False
 class FileManager:
     def __init__(self):
         self.gac = gac()
         self.files: dict[str, File] = {}
+
+        if PREPOPULATE:
+            self.populate_from_list()
+    def populate_from_list(self) -> None:
         print('FileManager: list files start')
         for file in self.gac.files.list():
             print('got file', file)
@@ -97,37 +104,37 @@ class FileManager:
             self.files[file.name] = file
         print('FileManager: list files done')
     def get(self, path: Path) -> Optional[File]:
-        file = self.files.get(path.name)
+        name = self.google_name_for_path(path)
+        file = self.files.get(name)
+        if file is None and not PREPOPULATE:
+            try:
+                file = self.gac.files.get(name=name)
+            except ClientError as e:
+                if e.status != 'PERMISSION_DENIED':
+                    raise e
+                file = None
         if file is None:
-            print(f'FileManager: no such file: {path.name!r}')
+            print(f'FileManager: no existing file: {path!r} / {name!r}')
             return None
-        if not (
-            self.hash_check(file, path) and
-            self.size_check(file, path) and
-            self.expiration_check(file, path)
-        ):
+        if not self.check(file, path):
             return None
         return file
 
-    def size_check(self, file: File, path: Path) -> bool:
+    def check(self, file: File, path: Path) -> bool:
         assert file.size_bytes is not None
         real_size = path.stat().st_size
         if file.size_bytes != real_size:
             print(f'FileManager: size mismatch!: {path.name!r}: {file.size_bytes} / {real_size}')
             return False
-        return True
 
-    def hash_check(self, file: File, path: Path) -> bool:
         # XXX: I don't know wtf this is supposed to be.  It says sha256_hash
         # but it's base64 of a 512-bit hash, and it's not SHA-512 either.
-        return True
         # assert file.sha256_hash is not None
         # if (a := file.sha256_hash.lower()) != (b := sha256_of_path(path)):
         #     print(f'FileManager: hash mismatch!: {path.name!r}: {a!r} / {b!r}')
         #     return False
         # return True
 
-    def expiration_check(self, file: File, path: Path) -> bool:
         assert file.expiration_time is not None
         if file.expiration_time < (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)):
             print(f'FileManager: file is expired or expiring soon: {path.name!r}: {file.expiration_time}')
@@ -135,20 +142,24 @@ class FileManager:
         return True
 
     def get_or_upload(self, path: Path) -> File:
+        name = self.google_name_for_path(path)
         exfile = self.get(path)
         if exfile is not None:
             return exfile
         a = time.time()
-        file: File = self.gac.files.upload(file=path) # type: ignore
+        config = UploadFileConfig(
+            name=self.google_name_for_path(path),
+            mime_type='image/png',
+        )
+        file: File = self.gac.files.upload(file=path, config=config) # type: ignore
         b = time.time()
         print(f'FileManager: uploaded {path} in {b - a}')
-        assert (
-            self.hash_check(file, path) and
-            self.size_check(file, path) and
-            self.expiration_check(file, path)
-        )
-        self.files[path.name] = file
+        assert self.check(file, path)
+        self.files[name] = file
         return file
+
+    def google_name_for_path(self, path: Path) -> str:
+        return path.name.replace('.', '-')
 
 class ChatWrap:
     def __init__(self, base_log_path: Optional[Path] = None):
@@ -187,7 +198,7 @@ class ChatWrap:
         return parse_log(path, size, self.file_manager)
 
     def send(self, text: str, image: Optional[Path] = None) -> str:
-        self.log(f'Sending: {text!r}\n')
+        self.log(f'Sending:\n> ' + text.replace('\n', '\n> ') + '\n')
         if image:
             self.log(f'Sending image: {image.name}\n')
         parts: list[PartUnionDict] = [Part.from_text(text=text)]
@@ -209,3 +220,8 @@ class ChatWrap:
             self.log(text.replace('\n', '\n> '), add_time=False)
         self.log('\n', add_time=False)
         return full_text
+
+if __name__ == '__main__':
+    import sys
+    path = Path(sys.argv[1])
+    print(parse_log(path, path.stat().st_size, FileManager()))

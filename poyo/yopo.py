@@ -60,16 +60,16 @@ You are connected to an emulator playing a game of Pokémon Yellow Version.  You
 While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates, in a text color as follows:
 
 - White means the square is the player's current position.
-- Red/yellow means the square is impassable.
+- Red means the square is impassable.
 - Green means the square is passable *and* the entire path from the player's current position to that square is visible on-screen.
 - Blue means the square is passable but the path from the current position to that square is either off-screen or nonexistent.
 
 After receiving each screenshot, you should respond in three parts.
-- First, describe what you see in the screenshot:
-  - For each visible object, briefly describe it and state its coordinates.
-  - For all text on the screen, recite the entire text.
+- First, describe anything that is NEW or CHANGED in the screenshot:
+  - For each new or changed visible object, briefly describe it and state its coordinates.
+  - For all new or changed game text on the screen (NOT coordinates from the overlay), recite the entire text.
 - Then, explain your current thinking.
-- Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action as a JSON-quoted string.
+- Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action in quotes.
 
 The following actions are available (each button will be pressed for 0.5 seconds):
 "a": press A
@@ -110,9 +110,10 @@ def do_action(action: Action) -> None:
     raise Exception(f'!? {action!r}')
 
 def parse_resp(resp: str) -> Optional[list[Action]]:
+    resp = resp.replace('*', '') # sometimes it likes to bold things
     ms = re.findall(r'ACTIONS?: (.*)', resp)
     if not ms:
-        print(f'[No ACTIONS line: {resp!r}]')
+        print(f'[No ACTION line: {resp!r}]')
         return None
     actions = ms[-1]
     try:
@@ -159,7 +160,7 @@ class GameSnapshot:
 
     @gsmemo
     def camera_pos(self) -> Coord:
-        x, y = self.read_mem(self.symbols['wYCoord'], 2)
+        y, x = self.read_mem(self.symbols['wYCoord'], 2)
         return x, y
 
     @gsmemo
@@ -292,7 +293,7 @@ def main():
             bad_count += 1
             if bad_count >= 10:
                 raise Exception('something is very wrong')
-            admonish = '\nCould not parse ACTIONS line out of that response.  Try again.'
+            admonish = '\nCould not parse ACTION line out of that response.  Try again.  Make sure NOT to use JSON, except for quoting the individual actions as required.'
             resp = cw.send(admonish, None)
         #if len(actions) > 3:
         #    need_actions_admonish = True
@@ -305,5 +306,6 @@ def main():
         print('done.')
 
 if __name__ == '__main__':
-    #main()
-    print(annotated_screenshot())
+    main()
+    #print(GameSnapshot().camera_pos())
+    #print(annotated_screenshot())

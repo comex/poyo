@@ -3,7 +3,7 @@ from .common import *
 
 
 STATE_TO_COLOR = {
-    TileState.IMPASSABLE: ('#ff0000', '#ffff00'),
+    TileState.IMPASSABLE: ('#000000', '#ff0000'),
     TileState.PASSABLE:   ('#0000ff', '#000000'),
     TileState.REACHABLE:  ('#00ff80', '#000000'),
     TileState.LEDGE:      ('#00ff80', '#000000'),

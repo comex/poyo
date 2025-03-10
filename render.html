@@ -1,0 +1,161 @@
+<body>
+</body>
+<style>
+body {
+    width: 700px;
+    font-size: 90%;
+}
+.action {
+    font-weight: bold;
+}
+.body {
+    margin-left: 20px;
+    white-space: pre-wrap;
+}
+.header {
+    background-color: #00c4c7;
+    font-family: monospace;
+}
+.screenshot {
+    width: 320px;
+    height: 288px;
+}
+.prompt {
+    background-color: #80e0e0;
+}
+.response {
+    background-color: #f0e0c0;
+}
+.prompt, .response {
+    padding: 5px;
+}
+</style>
+<script>
+class Parser {
+    constructor() {
+        this.buffer = '';
+        this.responseInProgress = null;
+    }
+    feed(chunk, isDone) {
+        console.log(`feed: ${chunk}`);
+        this.buffer += chunk;
+        let strippedNewline = false;
+        if (this.buffer.endsWith('\n') && !isDone) {
+            this.buffer = this.buffer.substr(0, this.buffer.length - 1);
+            strippedNewline = true;
+        }
+        let messages = this.buffer.split(/^(?=[0-9])/m);
+        console.log(messages);
+        for (let i = 0; i < messages.length - 1; i++) {
+            if (!this.feedMessage(messages[i], true)) {
+                throw new Error(`should not return false when isCompleteMessage is true - ${JSON.stringify(messages[i])}`);
+            }
+        }
+        let last = messages[messages.length - 1];
+        if (this.feedMessage(last, isDone)) {
+            this.buffer = '';
+        } else {
+            this.buffer = last;
+        }
+        if (strippedNewline) {
+            this.buffer += '\n';
+        }
+    }
+    feedMessage(data, isCompleteMessage) {
+        if (this.responseInProgress !== null) {
+            // we already got the header
+            this.feedStreamChunk(data, isCompleteMessage);
+            return true;
+        } else {
+            return this.feedRegularMessage(data, isCompleteMessage);
+        }
+    }
+    feedStreamChunk(data, isCompleteMessage) {
+        console.log(`CHUNK: ${JSON.stringify(data)}`);
+        data = data.replace(/\n> /g, '\n');
+        if (!this.responseInProgress.innerText) {
+            data = data.replace(/^\n+/, '');
+        }
+        this.responseInProgress.innerText += data;
+        if (isCompleteMessage) {
+            this.responseInProgress = null;
+        }
+
+    }
+    feedRegularMessage(data, isCompleteMessage) {
+        let m = data.match(/^(20.*?)  ([^:]*):(.*)/s);
+        if (!m) {
+            if (isCompleteMessage && data.length != 0) {
+                throw new Error(`Could not initially parse complete message ${JSON.stringify(data)}`);
+            }
+            return false;
+        }
+        let [_, date, action, rest] = m;
+        let isStreaming = action == 'Response';
+        if (!isStreaming && !isCompleteMessage) {
+            return false;
+        }
+        let topDiv = document.createElement('div');
+        let showAction = action;
+        if (showAction == 'Sending') showAction = 'Sending prompt';
+        topDiv.innerHTML = `<div class="header"><span class="date">${date}</span> <span class="action">${showAction}:</span></div><div class="body"></div>`;
+        let body = topDiv.querySelector('.body');
+        if (isStreaming) {
+            body.className = 'body response';
+            this.responseInProgress = body;
+            this.feedMessage(rest, isCompleteMessage);
+        } else if (action == 'Sending image') {
+            let url = 'log/' + rest.trim();
+            body.innerHTML = `<a href="${url}"><img class="screenshot" src="${url}" width="640" height="576"></a>`;
+        } else {
+            rest = rest.replace(/\n> /g, '\n').trim();
+            body.className = 'body prompt';
+            body.innerText = rest;
+        }
+        document.body.appendChild(topDiv);
+        return true;
+    }
+}
+function artificiallySplitForTesting(chunk) {
+    let ret = [];
+    while (chunk.length) {
+        console.log(chunk.length);
+        let len = (Math.random() * Math.min(200, chunk.length)) | 0;
+        if (!len) len = 1;
+        ret.push(chunk.substr(0, len));
+        chunk = chunk.substr(len);
+    }
+    return ret;
+}
+async function main() {
+    let logPath = 'log/log13.txt';
+    let response = await fetch(logPath);
+    if (!response.ok) {
+      throw new Error(`Response status: ${response.status}`);
+    }
+
+    let stream = response.body.pipeThrough(new TextDecoderStream());
+    let parser = new Parser;
+    for await (let chunk of stream) {
+        for (let subchunk of artificiallySplitForTesting(chunk)) {
+            parser.feed(subchunk, false);
+        }
+    }
+    parser.feed('', true);
+}
+async function mainWrap() {
+    try {
+        await main();
+    } catch (e) {
+        let x = document.createElement('div');
+        x.innerText = `JS error! ${e}`;
+        document.body.appendChild(x);
+        throw e;
+    }
+
+}
+let isSavedFromBrowser = !!document.querySelector('meta');
+if (!isSavedFromBrowser) {
+    mainWrap();
+}
+</script>

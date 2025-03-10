@@ -19,7 +19,12 @@ def new_sess_init(self: Session, *args: Any, **kwargs: Any):
     print('new_sess_init', self, args, kwargs)
     old_sess_init(self, *args, **kwargs)
 
-    retries = Retry(10000, status_forcelist={429, 503}, backoff_factor=0.1)
+    retries = Retry(
+        10000,
+        status_forcelist={429, 503},
+        backoff_factor=0.1,
+        allowed_methods={"HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"},
+    )
     self.mount('https://', HTTPAdapter(max_retries=retries))
 Session.__init__ = new_sess_init
 print('did override Session.__init__')
@@ -29,7 +34,7 @@ import google.genai # :( this is super slow
 _b = time.time()
 print('genai import time is', _b-_a)
 
-from google.genai.types import PartUnionDict, Part, Content, UserContent, ModelContent, GenerateContentResponse, UploadFileConfig, File
+from google.genai.types import PartUnionDict, Part, Content, UserContent, ModelContent, GenerateContentResponse, UploadFileConfig, File, HttpOptions
 from google.genai.errors import ClientError
 # GenerateContentConfig,  FunctionDeclaration, Schema, Type as SType, Content
 
@@ -95,7 +100,10 @@ def gac() -> google.genai.Client:
     return google.genai.Client(
         #api_key=open('api_key_free.txt').read().strip(),
         api_key=open('api_key.txt').read().strip(),
-        http_options={'api_version':'v1alpha'}
+        http_options=HttpOptions(
+            api_version='v1alpha',
+            timeout=30000,
+        ),
     )
 
 @cache

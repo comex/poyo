@@ -30,7 +30,7 @@ def debug_http():
     import http.client
     http.client.HTTPConnection.debuglevel = 1 # 2
     # ^ can only go to stdout :(
-#debug_http()
+debug_http()
 
 # BUTTON_PRESS_FD = lambda: FunctionDeclaration(
 #     name='button_press',

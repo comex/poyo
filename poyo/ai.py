@@ -182,7 +182,8 @@ class ChatWrap:
         else:
             history = []
         self.chat = gac().chats.create(
-            model='gemini-2.0-flash-thinking-exp',
+            #model='gemini-2.0-flash-thinking-exp',
+            model='gemini-2.0-pro-exp-02-05',
             # config=config
             history=history
         )

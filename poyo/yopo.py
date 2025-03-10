@@ -309,3 +309,4 @@ if __name__ == '__main__':
     main()
     #print(GameSnapshot().camera_pos())
     #print(annotated_screenshot())
+    #do_action('left')

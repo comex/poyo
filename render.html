@@ -37,7 +37,7 @@ class Parser {
         this.responseInProgress = null;
     }
     feed(chunk, isDone) {
-        console.log(`feed: ${chunk}`);
+        //console.log(`feed: ${chunk}`);
         this.buffer += chunk;
         let strippedNewline = false;
         if (this.buffer.endsWith('\n') && !isDone) {
@@ -45,7 +45,7 @@ class Parser {
             strippedNewline = true;
         }
         let messages = this.buffer.split(/^(?=[0-9])/m);
-        console.log(messages);
+        //console.log(messages);
         for (let i = 0; i < messages.length - 1; i++) {
             if (!this.feedMessage(messages[i], true)) {
                 throw new Error(`should not return false when isCompleteMessage is true - ${JSON.stringify(messages[i])}`);
@@ -64,14 +64,16 @@ class Parser {
     feedMessage(data, isCompleteMessage) {
         if (this.responseInProgress !== null) {
             // we already got the header
-            this.feedStreamChunk(data, isCompleteMessage);
-            return true;
+            return this.feedStreamChunk(data, isCompleteMessage);
         } else {
             return this.feedRegularMessage(data, isCompleteMessage);
         }
     }
     feedStreamChunk(data, isCompleteMessage) {
-        console.log(`CHUNK: ${JSON.stringify(data)}`);
+        //console.log(`CHUNK: ${JSON.stringify(data)}`);
+        if (!isCompleteMessage && data.startsWith('\n') && data.length < 3) {
+            return false;
+        }
         data = data.replace(/\n> /g, '\n');
         if (!this.responseInProgress.innerText) {
             data = data.replace(/^\n+/, '');
@@ -80,7 +82,7 @@ class Parser {
         if (isCompleteMessage) {
             this.responseInProgress = null;
         }
-
+        return true;
     }
     feedRegularMessage(data, isCompleteMessage) {
         let m = data.match(/^(20.*?)  ([^:]*):(.*)/s);
@@ -117,18 +119,21 @@ class Parser {
     }
 }
 function artificiallySplitForTesting(chunk) {
-    let ret = [];
-    while (chunk.length) {
-        console.log(chunk.length);
-        let len = (Math.random() * Math.min(200, chunk.length)) | 0;
-        if (!len) len = 1;
-        ret.push(chunk.substr(0, len));
-        chunk = chunk.substr(len);
+    if (0) {
+        return [chunk];
+    } else {
+        let ret = [];
+        while (chunk.length) {
+            let len = (Math.random() * Math.min(200, chunk.length)) | 0;
+            if (!len) len = 1;
+            ret.push(chunk.substr(0, len));
+            chunk = chunk.substr(len);
+        }
+        return ret;
     }
-    return ret;
 }
 async function main() {
-    let logPath = 'log/log13.txt';
+    let logPath = 'log/log19.txt';
     let response = await fetch(logPath);
     if (!response.ok) {
       throw new Error(`Response status: ${response.status}`);

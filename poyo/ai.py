@@ -2,13 +2,27 @@
 import datetime
 import time
 import re
-from typing import Optional, Iterator
+from typing import Optional, Iterator, Any
 from pathlib import Path
 from functools import cache
 import hashlib
 import traceback
 
 from .common import get_unique_path, log_dir
+
+# XXX hack
+from urllib3.util import Retry
+from requests import Session
+from requests.adapters import HTTPAdapter
+old_sess_init = Session.__init__
+def new_sess_init(self: Session, *args: Any, **kwargs: Any):
+    print('new_sess_init', self, args, kwargs)
+    old_sess_init(self, *args, **kwargs)
+
+    retries = Retry(10000, status_forcelist={429, 503}, backoff_factor=0.1)
+    self.mount('https://', HTTPAdapter(max_retries=retries))
+Session.__init__ = new_sess_init
+print('did override Session.__init__')
 
 _a = time.time()
 import google.genai # :( this is super slow
@@ -79,7 +93,8 @@ next_log_id = 1
 @cache
 def gac() -> google.genai.Client:
     return google.genai.Client(
-        api_key=open('api_key_free.txt').read().strip(),
+        #api_key=open('api_key_free.txt').read().strip(),
+        api_key=open('api_key.txt').read().strip(),
         http_options={'api_version':'v1alpha'}
     )
 
@@ -179,7 +194,7 @@ class FileManager:
     def google_name_for_path(self, path: Path) -> str:
         #return path.name.replace('.', '-')
         # TODO: deal with InvalidArgument when uploads are interrupted 
-        return 'files/p10-' + sha256_of_path(path)
+        return 'files/p11-' + sha256_of_path(path)
 
 class ChatWrap:
     def __init__(self, base_log_path: Optional[Path] = None):
@@ -231,7 +246,7 @@ class ChatWrap:
         it: Iterator[GenerateContentResponse] = self.chat.send_message_stream(parts)
         for chunk in it:
             text = chunk.text or ''
-            #print('?', chunk, repr(chunk.text))
+            print('?', chunk)
             full_text += text
             if last_was_nl:
                 text = '\n' + text

@@ -28,7 +28,8 @@ def debug_http():
     import logging
     logging.basicConfig(level=logging.DEBUG)
     import http.client
-    http.client.HTTPConnection.debuglevel = 2
+    http.client.HTTPConnection.debuglevel = 1 # 2
+    # ^ can only go to stdout :(
 #debug_http()
 
 # BUTTON_PRESS_FD = lambda: FunctionDeclaration(
@@ -119,27 +120,28 @@ def do_action(action: Action) -> None:
 
 def parse_resp(resp: str) -> Optional[list[Action]]:
     resp = resp.replace('*', '') # sometimes it likes to bold things
-    ms = re.findall(r'ACTIONS?: (.*)', resp)
+    ms = re.findall(r'ACTIONS?"?:\s*"?([a-z]+)', resp, flags=re.I)
     if not ms:
         print(f'[No ACTION line: {resp!r}]')
         return None
-    actions = ms[-1]
-    try:
-        parsed1 = json.loads(actions)
-    except json.decoder.JSONDecodeError:
-        print(f'[JSON decode failed: {actions!r}]')
-        return None
-    parsed: list[object]
-    if isinstance(parsed1, str):
-        parsed = [parsed1]
-    elif isinstance(parsed1, list):
-        parsed = parsed1
-    else:
-        print(f'[Not a list: {parsed1!r}]')
-        return None
-    if len(parsed) != 1:
-        print(f'[Wrong number of actions: {parsed!r}]')
-        return None
+    #actions = ms[-1]
+    #try:
+    #    parsed1 = json.loads(actions)
+    #except json.decoder.JSONDecodeError:
+    #    print(f'[JSON decode failed: {actions!r}]')
+    #    return None
+    #parsed: list[object]
+    #if isinstance(parsed1, str):
+    #    parsed = [parsed1]
+    #elif isinstance(parsed1, list):
+    #    parsed = parsed1
+    #else:
+    #    print(f'[Not a list: {parsed1!r}]')
+    #    return None
+    #if len(parsed) != 1:
+    #    print(f'[Wrong number of actions: {parsed!r}]')
+    #    return None
+    parsed = [ms[-1]]
     for action in parsed:
         if not is_valid_action(action):
             print(f'[Invalid action: {action!r} in {parsed!r}]')
@@ -299,8 +301,8 @@ def main():
         bad_count = 0
         while (actions := parse_resp(resp)) is None:
             bad_count += 1
-            if bad_count >= 10:
-                raise Exception('something is very wrong')
+            #if bad_count >= 10:
+            #    raise Exception('something is very wrong')
             admonish = ADMONISH_TEXT
             resp = cw.send(admonish, None)
         #if len(actions) > 3:

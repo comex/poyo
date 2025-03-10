@@ -57,10 +57,16 @@ def debug_http():
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
 
+While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates, in a text color as follows:
+
+- White means the square is the player's current position.
+- Red/yellow means the square is impassable.
+- Green means the square is passable *and* the entire path from the player's current position to that square is visible on-screen.
+- Blue means the square is passable but the path from the current position to that square is either off-screen or nonexistent.
+
 After receiving each screenshot, you should respond in three parts.
 - First, describe what you see in the screenshot:
-  - For each visible object, briefly describe it and (if it's an overworld object) where it is relative to the player.
-    - Then double-check that the object is still on the screen!
+  - For each visible object, briefly describe it and state its coordinates.
   - For all text on the screen, recite the entire text.
 - Then, explain your current thinking.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action as a JSON-quoted string.
@@ -79,8 +85,6 @@ The following actions are available (each button will be pressed for 0.5 seconds
 Examples:
 ACTION: "a"
 ACTION: "right"
-
-There is a limit of 3 actions per response.  To perform any more actions you must wait for the next screenshot.
 '''
 
 Action = str
@@ -301,5 +305,5 @@ def main():
         print('done.')
 
 if __name__ == '__main__':
-    main()
-    #print(annotated_screenshot())
+    #main()
+    print(annotated_screenshot())

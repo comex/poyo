@@ -3,12 +3,12 @@ from .common import *
 
 
 STATE_TO_COLOR = {
-    TileState.IMPASSABLE: ('#00000080', '#ff0000', '#ffffff'),
-    TileState.PASSABLE:   ('#00000080', '#0000ff', '#000000'),
-    TileState.REACHABLE:  ('#00000080', '#00ff80', '#000000'),
-    TileState.LEDGE:      ('#00000080', '#00ff80', '#000000'),
+    TileState.IMPASSABLE: ('#ff0000', '#ffff00'),
+    TileState.PASSABLE:   ('#0000ff', '#000000'),
+    TileState.REACHABLE:  ('#00ff80', '#000000'),
+    TileState.LEDGE:      ('#00ff80', '#000000'),
     # ^ for now, don't tell the model what ledges are
-    TileState.HERE:       ('#00000080', '#ffffff', '#000000'),
+    TileState.HERE:       ('#ffffff', '#000000'),
 }
 SCALE_FACTOR = 4
 JUST_DRAW_TILES = False
@@ -46,7 +46,6 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
                     tile_tl_x = xt * TILE_WIDTH_PX * SCALE_FACTOR
                     tile_tl_y = yt * TILE_HEIGHT_PX * SCALE_FACTOR
                     text = f'{xt},{yt}=\n${tile_map[xt,yt]:x}'
-                    bg_color = '#00000080'
                     fg_color = 'white' if is_map else 'red'
                     stroke_color = 'black'
                     draw_text = True
@@ -57,10 +56,10 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
                     tile_tl_x = xt * TILE_WIDTH_PX * SCALE_FACTOR
                     tile_tl_y = (yt - 1) * TILE_HEIGHT_PX * SCALE_FACTOR
                     xpos, ypos = camera_pos[0] + xt // 2, camera_pos[1] + yt // 2
-                    text = f'{xpos},\n{ypos}'
+                    text = f'{xpos},{ypos}'
 
                     state = reachable_state[xt, yt]
-                    bg_color, fg_color, stroke_color = STATE_TO_COLOR[state]
+                    fg_color, stroke_color = STATE_TO_COLOR[state]
 
                     draw_text = True
                 if draw_text:
@@ -80,9 +79,10 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
                     # (no longer now that it's centered)
                     x_adjust = 0 # tile_tl_x - bb_x1
                     y_adjust = 0 # tile_tl_y - bb_y1
-                    
+
                     # text background
                     if 0:
+                        bg_color = '#00000080'
                         draw.rectangle((bb_x1 + x_adjust, bb_y1 + y_adjust,
                                         bb_x2 + x_adjust, bb_y2 + y_adjust),
                                        fill=bg_color)

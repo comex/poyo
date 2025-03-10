@@ -29,8 +29,8 @@ def debug_http():
     logging.basicConfig(level=logging.DEBUG)
     import http.client
     http.client.HTTPConnection.debuglevel = 2
+#debug_http()
 
-debug_http()
 # BUTTON_PRESS_FD = lambda: FunctionDeclaration(
 #     name='button_press',
 #     description='Press one or more buttons in the emulated game.  Buttons will be pressed sequentially for a duration of 1 second.  Instead of a button, you can also pass "wait" to just wait 1 second without pressing anything.',
@@ -301,5 +301,5 @@ def main():
         print('done.')
 
 if __name__ == '__main__':
-    #main()
-    print(annotated_screenshot())
+    main()
+    #print(annotated_screenshot())

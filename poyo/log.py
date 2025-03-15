@@ -62,8 +62,8 @@ class Message:
     content: Sequence[Content]
     ref: Sequence[LogBase]
 
-    def _tldump(self) -> Any:
-        return {'role': self.role, 'content': self.content}
+    def _tldump(self, dumper: Dumper) -> Any:
+        return {'role': self.role, 'content': dumper.dump(self.content)}
 
     @cache
     def tokens(self, sess: Session) -> int:
@@ -82,6 +82,14 @@ class RecvLog(LogBase):
     finish: bool = False
     error: bool = False
     orig_resp: Any = None
+
+    def _tldump(self, dumper: Dumper) -> Any:
+        ret: Any = {'type': self.type, 'delta': self.delta}
+        for x in ['start', 'finish', 'error']:
+            if getattr(self, x):
+                ret[x] = True
+        return ret
+
 
 
 Log = Union[
@@ -166,10 +174,10 @@ class MessageList:
 
 @cache
 def dumper() -> Dumper:
-    ret = Dumper()
+    ret = Dumper(hidedefault=False)
     ret.handlers.insert(0, (
         (lambda value: hasattr(value, '_tldump'), # type: ignore
-         lambda dumper, value, ty: value._tldump()) # type: ignore
+         lambda dumper, value, ty: value._tldump(dumper)) # type: ignore
     ))
     return ret
 if __name__ == '__main__':

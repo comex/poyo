@@ -9,14 +9,15 @@ import json
 import logging
 import html
 import base64
+import time
 from datetime import datetime
 
 from .common import log_dir, operation
 
-class Session(Protocol):
+class StatelessSession(Protocol):
     def tokens_for_text(self, text: str) -> int: ...
     def tokens_for_image_size(self, size: tuple[int, int]) -> int: ...
-
+    def send(self, ml: 'MessageList') -> Iterable['RecvLog']: ...
 
 @dataclass(eq=False)
 class ContentBase:
@@ -29,7 +30,7 @@ class TextContent(ContentBase):
     type: Literal['text'] = 'text'
 
     @cache
-    def tokens(self, sess: Session) -> int:
+    def tokens(self, sess: StatelessSession) -> int:
         return sess.tokens_for_text(self.text)
 
     def dump_for_openai(self) -> Any:
@@ -38,7 +39,19 @@ class TextContent(ContentBase):
 @dataclass(eq=False)
 class ImageContent(ContentBase):
     name: str
+    width: int
+    height: int
     type: Literal['image'] = 'image'
+
+    @staticmethod
+    def from_name(name: str) -> 'ImageContent':
+        from PIL import Image
+        ret = ImageContent(name=name, width=0, height=0)
+        path = ret.path()
+        with operation(f'getting size of {path}'):
+            with Image.open(path) as image:
+                ret.width, ret.height = image.size
+        return ret
 
     def __post_init__(self) -> None:
         assert '/' not in self.name
@@ -47,16 +60,8 @@ class ImageContent(ContentBase):
         return log_dir / self.name
 
     @cache
-    def size(self) -> tuple[int, int]:
-        from PIL import Image
-        path = self.path()
-        with operation(f'getting size of {path}'):
-            with Image.open(path) as image:
-                return image.size
-
-    @cache
-    def tokens(self, sess: Session) -> int:
-        return sess.tokens_for_image_size(self.size())
+    def tokens(self, sess: StatelessSession) -> int:
+        return sess.tokens_for_image_size((self.width, self.height))
 
     @lru_cache
     def dump_for_openai(self) -> Any:
@@ -77,7 +82,7 @@ class Message:
         ref: Sequence[LogBase] = field(init=False)
 
     @cache
-    def tokens(self, sess: Session) -> int:
+    def tokens(self, sess: StatelessSession) -> int:
         return sum(c.tokens(sess) for c in self.content)
 
     def dump_for_openai(self) -> Any:
@@ -208,9 +213,8 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
                             yield '</div>\n'
                         case ImageContent():
                             src = f'log/{c.name}'
-                            width, height = c.size()
                             yield '<div class="send-image send-content content">\n'
-                            yield f'<a href="{html.escape(src)}"><img src="{html.escape(src)}" width="{width}" height="{height}"></a>\n'
+                            yield f'<a href="{html.escape(src)}"><img src="{html.escape(src)}" width="{c.width}" height="{c.height}"></a>\n'
                             yield '</div>\n'
                 yield '</div>\n'
     yield '''
@@ -219,7 +223,7 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
 '''
 
 class MessageList:
-    def __init__(self, sess: Session):
+    def __init__(self, sess: StatelessSession):
         self.sess = sess
         self._messages: list[Message] = []
         self._message_tokens: list[int] = []
@@ -240,11 +244,34 @@ class MessageList:
         self._messages[index] = m
         self._message_tokens[index] = m.tokens(self.sess)
         self.total_tokens += self._message_tokens[index]
+    def __len__(self) -> int:
+        return len(self._messages)
     def __repr__(self):
         return f'MessageList({len(self._messages)} messages, {self.total_tokens} total_tokens)'
 
     def __iter__(self) -> Iterator[Message]:
         return self._messages.__iter__()
+
+class StatelessWrapper:
+    def __init__(self, sess: StatelessSession, log_path: Path):
+        self.sess = sess
+        self.message_list = MessageList(sess)
+        self.fp = open(log_path, 'r+')
+        for m in filtered_log_to_messages(load_jsonl(self.fp)):
+            self.message_list.append(m)
+    def log(self, log: Log) -> None:
+        logging.info(str(log))
+        j = dumper().dump(log)
+        self.fp.write(json.dumps(j) + '\n')
+        self.fp.flush()
+    def send(self, m: Message) -> str:
+        self.message_list.append(m)
+        self.log(SendLog(time=time.time(), role=m.role, content=m.content))
+        ret = ''
+        for rlog in self.sess.send(self.message_list):
+            self.log(rlog)
+            ret += rlog.delta
+        return ret
 
 @cache
 def dumper() -> Dumper:

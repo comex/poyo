@@ -9,6 +9,8 @@ from functools import lru_cache, cache
 #from dataclasses import dataclass
 
 from .common import *
+from .log import ImageContent, Message, StatelessWrapper, TextContent
+from .openai import OpenAISession
 from . import retroarch
 from . import pil
 
@@ -283,12 +285,19 @@ def annotated_screenshot() -> Path:
 
 def main():
     #do_chat()
-    base_log_path: Optional[Path] = None # log_dir / 'log07.txt'
-    from .ai import ChatWrap
-    cw = ChatWrap(base_log_path)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('log_path', nargs='?', type=Path)
+    args = ap.parse_args()
+    log_path: Optional[Path] = args.log_path
+    if log_path is None:
+        log_path, _ = get_unique_path(0, log_dir, 'log', 2, '.txt')
+    print(log_path)
+    wrap = StatelessWrapper(OpenAISession(), log_path)
+
     pre_prompt: Optional[str] = None # won't save, but whatever
     while True:
-        if not cw.chat.get_history():
+        if not wrap.message_list:
             text = INTRO_TEXT
             assert pre_prompt is None
         else:
@@ -298,14 +307,20 @@ def main():
             text += 'Action accepted.  Current screenshot:'
         pre_prompt = None
         ss = annotated_screenshot()
-        resp = cw.send(text, ss)
+        resp: str = wrap.send(Message(role='user', content=[
+            TextContent(text=text),
+            ImageContent.from_name(ss.name),
+        ]))
         bad_count = 0
         while (actions := parse_resp(resp)) is None:
             bad_count += 1
-            #if bad_count >= 10:
-            #    raise Exception('something is very wrong')
+            if bad_count >= 10:
+                raise Exception('something is very wrong')
             admonish = ADMONISH_TEXT
-            resp = cw.send(admonish, None)
+            resp = wrap.send(Message(role='user', content=[
+                TextContent(text=admonish),
+            ]))
+
         #if len(actions) > 3:
         #    need_actions_admonish = True
         #    actions = actions[:3]
@@ -313,7 +328,7 @@ def main():
         for action in actions:
             do_action(action)
         print('Waiting 1 more second for any responses...', flush=True, end='')
-        time.sleep(1) # 
+        time.sleep(1)
         print('done.')
 
 if __name__ == '__main__':

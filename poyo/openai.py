@@ -9,7 +9,7 @@ from functools import cached_property
 from math import ceil
 
 from .common import operation
-from .log import ImageContent, Message, MessageList, RecvLog, TextContent, dumper, filtered_log_to_html
+from .log import ImageContent, Message, MessageList, RecvLog, TextContent, filtered_log_to_html
 
 class OpenAISession:
     def __init__(self):
@@ -97,7 +97,7 @@ def main() -> None:
     ml = MessageList(sess)
     ml.append(Message(role='user', content=[
         TextContent(text='Analyze the contents of this image.'),
-        ImageContent(name='ss00180.annotated.png'),
+        ImageContent.from_name('ss00180.annotated.png'),
     ]))
     for bit in filtered_log_to_html(sess.send(ml)):
         print(bit, end='', flush=True)

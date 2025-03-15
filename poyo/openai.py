@@ -9,7 +9,7 @@ from functools import cached_property
 from math import ceil
 
 from .common import operation
-from .log import ImageContent, Message, MessageList, RecvLog, TextContent, dumper
+from .log import ImageContent, Message, MessageList, RecvLog, TextContent, dumper, filtered_log_to_html
 
 class OpenAISession:
     def __init__(self):
@@ -52,17 +52,23 @@ class OpenAISession:
             stream=True,
         ) as resp:
             for line in resp.iter_lines():
-                rdata = json.loads(line)
-                rlog = RecvLog(time=time.time(), orig_resp=rdata)
-
+                rdata = None
                 try:
+                    if line.startswith(b'data: '):
+                        line = line[6:]
+                    if line == b'[DONE]':
+                        break
+                    if not line.strip():
+                        continue
+                    rdata = json.loads(line)
+                    rlog = RecvLog(time=time.time(), orig_resp=rdata)
+
                     assert rdata['object'] == 'chat.completion.chunk'
                     assert len(rdata['choices']) == 1
                     choice = rdata['choices'][0]
 
 
                     if choice['delta']:
-                        assert list(choice['delta'].keys() == ['content'])
                         content = choice['delta']['content']
                         assert isinstance(content, str)
                         rlog.delta = content
@@ -73,9 +79,14 @@ class OpenAISession:
                     elif choice['finish_reason']:
                         rlog.error = True
 
+                    yielded_any = True
+                    yield rlog
+
                 except BaseException as e:
+                    if isinstance(e, Exception):
+                        logging.exception(f'Got exception while parsing line {line!r}')
                     if yielded_any:
-                        logging.warning(f'Yielding fake RecvLog due to exception {e}')
+                        logging.warning(f'Yielding fake RecvLog due to exception {type(e)}')
                         yield RecvLog(time=time.time(), orig_resp=rdata, error=True)
                     raise
 
@@ -86,9 +97,9 @@ def main() -> None:
     ml = MessageList(sess)
     ml.append(Message(role='user', content=[
         TextContent(text='Analyze the contents of this image.'),
-        ImageContent(name='log/ss180.annotated.png'),
+        ImageContent(name='ss00180.annotated.png'),
     ]))
-    for rlog in sess.send(ml):
-        print(rlog)
+    for bit in filtered_log_to_html(sess.send(ml)):
+        print(bit, end='', flush=True)
 if __name__ == '__main__': main()
 

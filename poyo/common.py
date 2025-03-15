@@ -3,9 +3,16 @@ from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, Iterable, Callable
 from enum import IntEnum
 import time
+import faulthandler
+import signal
+
 T = TypeVar('T')
 
 Coord = tuple[int, int]
+
+faulthandler.register(signal.SIGUSR1)
+if hasattr(signal, 'SIGINFO'):
+    faulthandler.register(signal.SIGINFO)
 
 log_dir = (Path(__file__).parent / '../log').resolve()
 

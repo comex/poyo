@@ -2,7 +2,7 @@
 </body>
 <style>
 body {
-    width: 700px;
+    max-width: 700px;
     font-size: 90%;
 }
 .action {
@@ -22,6 +22,8 @@ body {
 }
 .prompt {
     background-color: #80e0e0;
+    max-height: 25px;
+    overflow: auto;
 }
 .response {
     background-color: #f0e0c0;
@@ -99,6 +101,7 @@ class Parser {
             return false;
         }
         let topDiv = document.createElement('div');
+        topDiv.className = 'top';
         let showAction = action;
         if (showAction == 'Sending') showAction = 'Sending prompt';
         topDiv.innerHTML = `<div class="header"><span class="date">${date}</span> <span class="action">${showAction}:</span></div><div class="body"></div>`;
@@ -116,6 +119,13 @@ class Parser {
             body.innerText = rest;
         }
         document.body.appendChild(topDiv);
+        if (1) {
+            // XXX: prune messages
+            while (document.body.childElementCount > 30) {
+                document.body.removeChild(document.body.querySelector('.top'));
+            }
+
+        }
         return true;
     }
 }
@@ -134,7 +144,7 @@ function artificiallySplitForTesting(chunk) {
     }
 }
 async function main() {
-    let logPath = 'log/log53.txt?tail';
+    let logPath = 'log/log54.txt?tail';
     let response = await fetch(logPath);
     if (!response.ok) {
       throw new Error(`Response status: ${response.status}`);
@@ -142,7 +152,11 @@ async function main() {
 
     let stream = response.body.pipeThrough(new TextDecoderStream());
     let parser = new Parser;
-    for await (let chunk of stream) {
+    // OBS is on an old Chrome that doesn't support async iteration for this?
+    //for await (let chunk of stream.values()) {
+    for (let reader = stream.getReader(), rret;
+         !(rret = await reader.read()).done;) {
+        let chunk = rret.value;
         console.log('got chunk', chunk.length);
         for (let subchunk of artificiallySplitForTesting(chunk)) {
             parser.feed(subchunk, false);

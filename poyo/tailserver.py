@@ -11,7 +11,7 @@ class MyHTTPRequestHandler(SimpleHTTPRequestHandler):
         path = Path(self.translate_path(self.path))
         assert path.exists()
         self.send_response(200)
-        self.send_header('Content-Type', 'text/plain')
+        self.send_header('Content-Type', 'text/html')
         self.end_headers()
         p: Optional[subprocess.Popen[bytes]] = None
         print('...')
@@ -19,9 +19,10 @@ class MyHTTPRequestHandler(SimpleHTTPRequestHandler):
             p = subprocess.Popen(['tail', '-c', '99999999', '-f', '--', path], stdout=subprocess.PIPE, bufsize=0)
             assert p.stdout is not None
             while buf := p.stdout.read(8192):
-                print(repr(buf))
+                #print(repr(buf))
                 self.wfile.write(buf)
                 self.wfile.flush()
+                #import time; time.sleep(0.5)
             print('it exited?')
         finally:
             if p is not None:

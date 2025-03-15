@@ -1,0 +1,36 @@
+body {
+    max-width: 700px;
+    font-size: 90%;
+}
+.send-text {
+
+}
+
+.action {
+    font-weight: bold;
+}
+.body {
+    margin-left: 20px;
+    white-space: pre-wrap;
+}
+
+.send {
+    background-color: #80e0e0;
+    /* max-height: 25px; */
+    /* overflow: auto; */
+}
+.recv {
+    background-color: #f0e0c0;
+}
+.time {
+    background-color: #00c4c7;
+    font-family: monospace;
+}
+.send-image img {
+    width: 320px;
+    height: 288px;
+}
+
+.content {
+    padding: 5px;
+}

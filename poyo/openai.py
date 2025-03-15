@@ -1,9 +1,15 @@
+import json
+import logging
 from pathlib import Path
-from . import log, common
+import time
+from typing import Iterable
 import requests
 import requests.adapters
 from functools import cached_property
 from math import ceil
+
+from .common import operation
+from .log import ImageContent, Message, MessageList, RecvLog, TextContent, dumper
 
 class OpenAISession:
     def __init__(self):
@@ -22,7 +28,7 @@ class OpenAISession:
 
     @cached_property
     def encoding(self):
-        with common.operation(f'loading encoding for {self.model}'):
+        with operation(f'loading encoding for {self.model}'):
             import tiktoken
             return tiktoken.encoding_for_model(self.model)
 
@@ -32,4 +38,57 @@ class OpenAISession:
     def tokens_for_image_size(self, size: tuple[int, int]) -> int:
         tiles = ceil(size[0] / 512) * ceil(size[1] / 512)
         return 85 + 170 * tiles
+
+    def send(self, ml: MessageList) -> Iterable[RecvLog]:
+        req = {
+            'model': self.model,
+            'messages': [m.dump_for_openai() for m in ml],
+            'stream': True,
+        }
+        yielded_any = False
+        with self.s.post(
+            'https://api.openai.com/v1/chat/completions',
+            json=req,
+            stream=True,
+        ) as resp:
+            for line in resp.iter_lines():
+                rdata = json.loads(line)
+                rlog = RecvLog(time=time.time(), orig_resp=rdata)
+
+                try:
+                    assert rdata['object'] == 'chat.completion.chunk'
+                    assert len(rdata['choices']) == 1
+                    choice = rdata['choices'][0]
+
+
+                    if choice['delta']:
+                        assert list(choice['delta'].keys() == ['content'])
+                        content = choice['delta']['content']
+                        assert isinstance(content, str)
+                        rlog.delta = content
+
+                    rlog.start = not yielded_any
+                    if choice['finish_reason'] == 'stop':
+                        rlog.finish = True
+                    elif choice['finish_reason']:
+                        rlog.error = True
+
+                except BaseException as e:
+                    if yielded_any:
+                        logging.warning(f'Yielding fake RecvLog due to exception {e}')
+                        yield RecvLog(time=time.time(), orig_resp=rdata, error=True)
+                    raise
+
+
+
+def main() -> None:
+    sess = OpenAISession()
+    ml = MessageList(sess)
+    ml.append(Message(role='user', content=[
+        TextContent(text='Analyze the contents of this image.'),
+        ImageContent(name='log/ss180.annotated.png'),
+    ]))
+    for rlog in sess.send(ml):
+        print(rlog)
+if __name__ == '__main__': main()
 

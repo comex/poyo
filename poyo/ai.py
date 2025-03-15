@@ -1,4 +1,3 @@
-# TODO: REMOVE /etc/hosts ENTRY
 import datetime
 import time
 import re

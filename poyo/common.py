@@ -1,10 +1,12 @@
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar, Iterable, Callable
+from typing import Generic, Iterator, Protocol, TypeVar, Iterable, Callable
 from enum import IntEnum
+from contextlib import contextmanager
 import time
 import faulthandler
 import signal
+import logging
 
 T = TypeVar('T')
 
@@ -105,3 +107,10 @@ def xtime(f: Callable[[], T]) -> T:
     print('xtime:', b - a)
     return ret
 
+@contextmanager
+def operation(desc: str) -> Iterator[None]:
+    logging.info(f'{desc}: start')
+    a = time.time()
+    yield
+    b = time.time()
+    logging.info(f'{desc}: finished after {1000 * (b - a):.0f}ms')

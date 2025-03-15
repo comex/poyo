@@ -1,9 +1,10 @@
 from pathlib import Path
-from . import log
+from . import log, common
 import requests
 import requests.adapters
 from functools import cached_property
 from math import ceil
+
 class OpenAISession:
     def __init__(self):
         api_key = (Path(__file__).parent / '../secrets/openai_api_key.txt').read_text().strip()
@@ -21,8 +22,9 @@ class OpenAISession:
 
     @cached_property
     def encoding(self):
-        import tiktoken
-        return tiktoken.encoding_for_model(self.model)
+        with common.operation(f'loading encoding for {self.model}'):
+            import tiktoken
+            return tiktoken.encoding_for_model(self.model)
 
     def tokens_for_text(self, text: str) -> int:
         return len(self.encoding.encode(text))

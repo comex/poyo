@@ -1,4 +1,4 @@
-from typing import Literal, Union, Iterable, Any, Protocol, TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Literal, Union, Iterable, Any, Protocol, Sequence
 from io import TextIOBase
 from dataclasses import dataclass, field
 from functools import cache
@@ -8,19 +8,19 @@ from typedload.datadumper import Dumper
 import json
 import logging
 
-from .common import log_dir
+from .common import log_dir, operation
 
 class Session(Protocol):
     def tokens_for_text(self, text: str) -> int: ...
     def tokens_for_image_size(self, size: tuple[int, int]) -> int: ...
 
 
-@dataclass(frozen=True)
+@dataclass(eq=False)
 class ContentBase:
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(eq=False)
 class TextContent(ContentBase):
     text: str
     type: Literal['text'] = 'text'
@@ -29,7 +29,7 @@ class TextContent(ContentBase):
     def tokens(self, sess: Session) -> int:
         return sess.tokens_for_text(self.text)
 
-@dataclass(frozen=True)
+@dataclass(eq=False)
 class ImageContent(ContentBase):
     name: str
     type: Literal['image'] = 'image'
@@ -43,8 +43,10 @@ class ImageContent(ContentBase):
     @cache
     def size(self) -> tuple[int, int]:
         from PIL import Image
-        with Image.open(self.path()) as image:
-            return image.size
+        path = self.path()
+        with operation(f'getting size of {path}'):
+            with Image.open(path) as image:
+                return image.size
 
     @cache
     def tokens(self, sess: Session) -> int:
@@ -52,29 +54,27 @@ class ImageContent(ContentBase):
 
 Content = Union[TextContent, ImageContent]
 
-@dataclass(frozen=True)
+@dataclass
 class LogBase:
     time: float
 
-@dataclass(frozen=True)
+@dataclass(eq=False)
 class Message:
     role: Literal['user', 'developer', 'assistant']
-    content: Sequence[Content]
-    ref: Sequence[LogBase]
-
-    def _tldump(self, dumper: Dumper) -> Any:
-        return {'role': self.role, 'content': dumper.dump(self.content)}
+    content: list[Content]
+    if TYPE_CHECKING:
+        ref: Sequence[LogBase] = field(init=False)
 
     @cache
     def tokens(self, sess: Session) -> int:
         return sum(c.tokens(sess) for c in self.content)
 
-@dataclass(frozen=True)
+@dataclass
 class SendLog(LogBase, Message):
     type: Literal['send'] = 'send'
     tag: Any = None
 
-@dataclass(frozen=True)
+@dataclass
 class RecvLog(LogBase):
     type: Literal['recv'] = 'recv'
     delta: str = ''
@@ -99,8 +99,9 @@ Log = Union[
 
 def load_jsonl(fp: TextIOBase) -> Iterable[Log]:
     for line in fp:
-        # https://github.com/microsoft/pyright/issues/10091
-        yield typedload.load(json.loads(line), Log) # type: ignore
+        if line.strip():
+            # https://github.com/microsoft/pyright/issues/10091
+            yield typedload.load(json.loads(line), Log) # type: ignore
 
 def log_to_messages(logs: Iterable[Log]) -> Iterable[Message]:
     cur_recv: list[RecvLog] = []
@@ -110,8 +111,8 @@ def log_to_messages(logs: Iterable[Log]) -> Iterable[Message]:
             m = Message(
                 role='assistant',
                 content=[TextContent(''.join(r.delta for r in cur_recv))],
-                ref=cur_recv,
             )
+            m.ref = cur_recv
             yield m
             cur_recv = []
 
@@ -141,8 +142,8 @@ def log_to_messages(logs: Iterable[Log]) -> Iterable[Message]:
                 m = Message(
                     role=log.role,
                     content=log.content,
-                    ref=[log],
                 )
+                m.ref=[log]
                 yield m
 
     discard_recv()
@@ -169,6 +170,8 @@ class MessageList:
         self._messages[index] = m
         self._message_tokens[index] = m.tokens(self.sess)
         self.total_tokens += self._message_tokens[index]
+    def __repr__(self):
+        return f'MessageList({len(self._messages)} messages, {self.total_tokens} total_tokens)'
 #def log_to_ascii(logs: Iterable[Log]) -> Iterable[str]:
     
 
@@ -181,9 +184,21 @@ def dumper() -> Dumper:
     ))
     return ret
 if __name__ == '__main__':
-    logs = list(load_jsonl(open('/tmp/test.jsonl')))
+    logging.basicConfig(level=logging.INFO)
+    logs = list(load_jsonl(open('data/test.jsonl')))
     # for log in logs:
     #     print(dumper().dump(log))
+    ms: list[Message] = []
     for m in log_to_messages(logs):
         print(m)
         print(dumper().dump(m))
+        ms.append(m)
+
+    from . import openai
+    sess = openai.OpenAISession()
+    ml = MessageList(sess)
+    for m in ms:
+        ml.append(m)
+        print('->', ml.total_tokens)
+    ml.pop(0)
+    print(ml)

@@ -72,7 +72,7 @@ Content = Union[TextContent, ImageContent]
 
 @dataclass
 class LogBase:
-    time: float
+    time: float = 0.0
 
 @dataclass(eq=False)
 class Message:
@@ -103,7 +103,7 @@ class RecvLog(LogBase):
     orig_resp: Any = None
 
     def _tldump(self, dumper: Dumper) -> Any:
-        ret: Any = {'type': self.type, 'delta': self.delta}
+        ret: Any = {'time': self.time, 'type': self.type, 'delta': self.delta}
         for x in ['start', 'finish', 'error']:
             if getattr(self, x):
                 ret[x] = True
@@ -177,10 +177,15 @@ def filtered_log_to_messages(logs: Iterable[Log]) -> Iterable[Message]:
                 yield m
 
 def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
-    yield '''
+
+    css = (Path(__file__).parent / '../poyo.css').read_text()
+    yield f'''
 <html>
 <head>
-    <link rel="stylesheet" href="poyo.css">
+    <meta charset=utf-8>
+    <style>
+{css}
+    </style>
 </head>
 <body>
 '''
@@ -255,22 +260,57 @@ class MessageList:
 class StatelessWrapper:
     def __init__(self, sess: StatelessSession, log_path: Path):
         self.sess = sess
+
+        self.token_limit = 32000
+        self.max_history_images = 0
+
         self.message_list = MessageList(sess)
         self.fp = open(log_path, 'r+')
         for m in filtered_log_to_messages(load_jsonl(self.fp)):
             self.message_list.append(m)
+
+    def trim(self) -> None:
+        n = 0
+        while self.message_list.total_tokens > self.token_limit:
+            self.message_list.pop(0)
+            n += 1
+        if n:
+            logging.warning(f'Trimmed {n} messages to get total_tokens down to {self.message_list.total_tokens}')
+    def remove_images(self) -> None:
+        remaining = self.max_history_images
+        for i, m in reversed(list(enumerate(self.message_list))):
+            if any(isinstance(c, ImageContent) for c in m.content):
+                if remaining > 0:
+                    remaining -= 1
+                    continue
+                new_m = Message(
+                    role=m.role,
+                    content=[(c if isinstance(c, TextContent) else
+                              TextContent('[image]'))
+                             for c in m.content]
+                )
+                self.message_list[i] = new_m
+
     def log(self, log: Log) -> None:
         logging.info(str(log))
         j = dumper().dump(log)
         self.fp.write(json.dumps(j) + '\n')
         self.fp.flush()
+
     def send(self, m: Message) -> str:
+        self.remove_images()
         self.message_list.append(m)
+        self.trim()
+        logging.info(f'when sending, total_tokens is now at {self.message_list.total_tokens}')
         self.log(SendLog(time=time.time(), role=m.role, content=m.content))
         ret = ''
+        rlogs: list[RecvLog] = []
         for rlog in self.sess.send(self.message_list):
+            rlogs.append(rlog)
             self.log(rlog)
             ret += rlog.delta
+        for m in filtered_log_to_messages(filter_log(rlogs)):
+            self.message_list.append(m)
         return ret
 
 @cache
@@ -283,16 +323,19 @@ def dumper() -> Dumper:
     return ret
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument('mode', choices=['messages', 'html', 'logs', 'ml'])
+    ap.add_argument('filename')
+    ap.add_argument('--tail', action='store_true')
     args = ap.parse_args()
 
     #mode_messages = sp.add_parser('messages'); mode_messages.set_defaults(mode='messages')
     #mode_html = sp.add_parser('html'); mode_html.set_defaults(mode='html')
 
-    logs = list(load_jsonl(open('data/test.jsonl')))
+    fp = Tail(args.filename) if args.fail else open(args.filename)
+    logs = load_jsonl(fp)
     match args.mode:
         case 'logs':
             for log in logs:

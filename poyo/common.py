@@ -3,10 +3,12 @@ from dataclasses import dataclass
 from typing import Generic, Iterator, Protocol, TypeVar, Iterable, Callable
 from enum import IntEnum
 from contextlib import contextmanager
+import io
 import time
 import faulthandler
 import signal
 import logging
+import subprocess
 
 T = TypeVar('T')
 
@@ -114,3 +116,42 @@ def operation(desc: str) -> Iterator[None]:
     yield
     b = time.time()
     logging.info(f'{desc}: finished after {1000 * (b - a):.0f}ms')
+
+class Tail(io.RawIOBase):
+    def __init__(self, filename: Path):
+        filename.stat() # raise error if not accessible
+        self.p = subprocess.Popen(
+            ['tail', '-f', '--', filename],
+            bufsize=0,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+        )
+
+    def read(self, size: int = -1, /) -> bytes:
+        assert self.p.stdout is not None # for typing
+        return self.p.stdout.read(size)
+
+    def readable(self):
+        assert not self.closed
+        return True
+
+    def close(self) -> None:
+        assert self.p.stdout is not None # for typing
+        self.p.stdout.close()
+        self.p.kill()
+        super().close()
+
+def open_tail(filename: Path) -> io.TextIOWrapper:
+    return io.TextIOWrapper(io.BufferedReader(Tail(filename)))
+
+def test_tail() -> None:
+    path = Path('/tmp/test_tail.txt')
+    ofp = open(path, 'wb', buffering=0)
+    ifp = open_tail(path)
+    ofp.write(b'asdf')
+    import time; time.sleep(999)
+
+def main() -> None:
+    test_tail()
+
+if __name__ == '__main__': main()

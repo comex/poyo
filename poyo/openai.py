@@ -16,7 +16,10 @@ class OpenAISession:
         api_key = (Path(__file__).parent / '../secrets/openai_api_key.txt').read_text().strip()
         self.s = requests.Session()
         self.s.headers['Authorization'] = f'Bearer {api_key}'
-        self.model = 'gpt-4o'
+        #self.model = 'gpt-4.5-preview'
+        #self.model = 'o3-mini'
+        self.model = 'o1'
+        #self.model = 'gpt-4o'
         retry = requests.adapters.Retry(
             10000,
             status_forcelist={429, 503},
@@ -30,7 +33,12 @@ class OpenAISession:
     def encoding(self):
         with operation(f'loading encoding for {self.model}'):
             import tiktoken
-            return tiktoken.encoding_for_model(self.model)
+            model = self.model
+            if model.startswith('gpt-4.5'):
+                # https://github.com/dotnet/machinelearning/issues/7404
+                logging.warning(f'Using gpt-4o tokenizer for {model}')
+                model = 'gpt-4o'
+            return tiktoken.encoding_for_model(model)
 
     def tokens_for_text(self, text: str) -> int:
         return len(self.encoding.encode(text))
@@ -45,13 +53,24 @@ class OpenAISession:
             'messages': [m.dump_for_openai() for m in ml],
             'stream': True,
         }
+        if self.model == 'o1':
+            req['reasoning_effort'] = 'low'
+        print('>>>>', req)
         yielded_any = False
         with self.s.post(
             'https://api.openai.com/v1/chat/completions',
             json=req,
             stream=True,
         ) as resp:
-            for line in resp.iter_lines():
+            lines: Iterable[bytes]
+            match resp.headers['Content-Type'].split(';')[0]:
+                case 'application/json':
+                    lines = [resp.content]
+                case 'text/event-stream':
+                    lines = resp.iter_lines()
+                case x:
+                    raise Exception(f'unexpected content-type {x!r}')
+            for line in lines:
                 rdata = None
                 try:
                     if line.startswith(b'data: '):

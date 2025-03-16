@@ -1,6 +1,8 @@
+import os
+os.environ['SSLKEYLOGFILE'] = 'sslkeylogfile.txt'
+
 import struct
 import time
-import os
 import re
 # import json
 from typing import Optional, cast
@@ -33,7 +35,6 @@ def debug_http():
     http.client.HTTPConnection.debuglevel = 1 # 2
     # ^ can only go to stdout :(
 #debug_http()
-os.environ['SSLKEYLOGFILE'] = 'sslkeylogfile.txt'
 
 # BUTTON_PRESS_FD = lambda: FunctionDeclaration(
 #     name='button_press',
@@ -284,6 +285,10 @@ def annotated_screenshot() -> Path:
     )
 
 def main():
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s %(levelname)-8s %(message)s',
+    )
     #do_chat()
     import argparse
     ap = argparse.ArgumentParser()

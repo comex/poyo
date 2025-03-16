@@ -1,6 +1,6 @@
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Generic, Iterator, Protocol, TypeVar, Iterable, Callable
+from typing import Any, Generic, Iterator, Protocol, TypeVar, Iterable, Callable
 from enum import IntEnum
 from contextlib import contextmanager
 import io
@@ -8,7 +8,7 @@ import time
 import faulthandler
 import signal
 import logging
-import subprocess
+import platform
 
 T = TypeVar('T')
 
@@ -117,28 +117,39 @@ def operation(desc: str) -> Iterator[None]:
     b = time.time()
     logging.info(f'{desc}: finished after {1000 * (b - a):.0f}ms')
 
+class Notifier(Protocol):
+    def __enter__(self) -> Callable[[], None]: ...
+    def __exit__(self, *args: Any, **kwargs: Any) -> Any: ...
+
+if 
+
+def make_notifier(filename: Path) -> Notifier:
+    return InotifyNotifier
+
 class Tail(io.RawIOBase):
     def __init__(self, filename: Path):
-        filename.stat() # raise error if not accessible
-        self.p = subprocess.Popen(
-            ['tail', '-f', '--', filename],
-            bufsize=0,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-        )
+        self.fp = open(filename, 'rb')
+        self.notify = make_notifier(filename)
 
     def read(self, size: int = -1, /) -> bytes:
-        assert self.p.stdout is not None # for typing
-        return self.p.stdout.read(size)
+        ret = self.fp.read(size)
+        if ret != b'':
+            return ret
+        with self.notifier as wait:
+            while True:
+                ret = self.fp.read(size)
+                if ret != b'':
+                    break
+                wait()
+
+        return ret
 
     def readable(self):
         assert not self.closed
         return True
 
     def close(self) -> None:
-        assert self.p.stdout is not None # for typing
-        self.p.stdout.close()
-        self.p.kill()
+        self.fp.close()
         super().close()
 
 def open_tail(filename: Path) -> io.TextIOWrapper:

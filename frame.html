@@ -1,0 +1,48 @@
+<style>
+iframe {
+    width: 100%;
+    height: calc(100% - 20px);
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+body { margin: 0; }
+</style>
+<iframe id="ifr" src="x.html?slow"></iframe>
+<script>
+function gotMutation() {
+    ifr.contentWindow.scrollTo({
+        top: ifr.contentWindow.document.documentElement.scrollHeight,
+        behavior: 'smooth',
+    });
+    //console.log(`scrolled to ${ifr.contentWindow.document.documentElement.scrollHeight }`);
+
+}
+function setupObserver(tries) {
+    let observer = new MutationObserver(() => {
+        gotMutation();
+    });
+    if (ifr.contentWindow.document.body === null ||
+        !ifr.contentWindow.document.body.innerHTML) {
+        setTimeout(() => setupObserver(tries + 1), 50);
+        return;
+    }
+    console.log(`ready to set up observer after ${tries} tries`);
+    let doc = ifr.contentWindow.document.documentElement;
+    observer.observe(doc, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+    });
+    gotMutation();
+}
+setupObserver(0);
+
+setInterval(() => {
+    let body = ifr.contentWindow.document.body;
+    let limit = 5;
+    while (body.childElementCount > limit) {
+        body.removeChild(body.firstChild);
+    }
+}, 500);
+</script>

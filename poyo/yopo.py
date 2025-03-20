@@ -17,6 +17,7 @@ from . import retroarch
 from . import pil
 
 os.chdir(Path(__file__).parent.parent)
+log_dir.mkdir(exist_ok=True)
 
 def ud_thread():
     state = PadState()

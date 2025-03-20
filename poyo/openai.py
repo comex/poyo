@@ -18,8 +18,8 @@ class OpenAISession:
         self.s.headers['Authorization'] = f'Bearer {api_key}'
         #self.model = 'gpt-4.5-preview'
         #self.model = 'o3-mini'
-        self.model = 'o1'
-        #self.model = 'gpt-4o'
+        #self.model = 'o1'
+        self.model = 'gpt-4o'
         retry = requests.adapters.Retry(
             10000,
             status_forcelist={429, 503},

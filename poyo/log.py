@@ -12,7 +12,7 @@ import base64
 import time
 from datetime import datetime
 
-from .common import log_dir, operation
+from .common import log_dir, operation, open_tail
 
 class StatelessSession(Protocol):
     def tokens_for_text(self, text: str) -> int: ...
@@ -327,14 +327,11 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument('mode', choices=['messages', 'html', 'logs', 'ml'])
-    ap.add_argument('filename')
+    ap.add_argument('filename', type=Path)
     ap.add_argument('--tail', action='store_true')
     args = ap.parse_args()
 
-    #mode_messages = sp.add_parser('messages'); mode_messages.set_defaults(mode='messages')
-    #mode_html = sp.add_parser('html'); mode_html.set_defaults(mode='html')
-
-    fp = Tail(args.filename) if args.fail else open(args.filename)
+    fp = open_tail(args.filename) if args.tail else open(args.filename)
     logs = load_jsonl(fp)
     match args.mode:
         case 'logs':

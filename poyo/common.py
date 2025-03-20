@@ -1,6 +1,6 @@
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Generic, Iterator, Protocol, TypeVar, Iterable, Callable
+from typing import Generic, Iterator, Protocol, TypeVar, Iterable, Callable
 from enum import IntEnum
 from contextlib import contextmanager
 import io
@@ -8,7 +8,10 @@ import time
 import faulthandler
 import signal
 import logging
-import platform
+import subprocess
+import sys
+import threading
+from typing_extensions import Buffer
 
 T = TypeVar('T')
 
@@ -31,7 +34,6 @@ def get_unique_path(next_id: int, dir: Path, prefix: str, precision: int, suffix
             break
     f.close()
     return new_path, next_id
-log_dir.mkdir(exist_ok=True)
 
 BUTTONS = ['up', 'down', 'left', 'right', 'a', 'b', 'start', 'select']
 @dataclass
@@ -117,52 +119,64 @@ def operation(desc: str) -> Iterator[None]:
     b = time.time()
     logging.info(f'{desc}: finished after {1000 * (b - a):.0f}ms')
 
-class Notifier(Protocol):
-    def __enter__(self) -> Callable[[], None]: ...
-    def __exit__(self, *args: Any, **kwargs: Any) -> Any: ...
-
-if 
-
-def make_notifier(filename: Path) -> Notifier:
-    return InotifyNotifier
-
 class Tail(io.RawIOBase):
     def __init__(self, filename: Path):
-        self.fp = open(filename, 'rb')
-        self.notify = make_notifier(filename)
+        filename.stat() # raise error if not accessible
+        self.p = subprocess.Popen(
+            [sys.executable, '-m', 'poyo.janitor', 'tail', '-n', '+1', '-f', '--', filename],
+            bufsize=0,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
 
     def read(self, size: int = -1, /) -> bytes:
-        ret = self.fp.read(size)
-        if ret != b'':
-            return ret
-        with self.notifier as wait:
-            while True:
-                ret = self.fp.read(size)
-                if ret != b'':
-                    break
-                wait()
+        assert self.p.stdout is not None # for typing
+        return self.p.stdout.read(size)
 
-        return ret
+    def readinto(self, b: Buffer, /) -> int:
+        assert self.p.stdout is not None # for typing
+        return self.p.stdout.readinto(b) # type: ignore
 
     def readable(self):
         assert not self.closed
         return True
 
     def close(self) -> None:
-        self.fp.close()
+        assert self.p.stdin is not None # for typing
+        assert self.p.stdout is not None # for typing
+        self.p.stdin.close()
+        self.p.stdout.close()
         super().close()
 
 def open_tail(filename: Path) -> io.TextIOWrapper:
-    return io.TextIOWrapper(io.BufferedReader(Tail(filename)))
+    tail = Tail(filename)
+    return io.TextIOWrapper(io.BufferedReader(tail))
 
 def test_tail() -> None:
     path = Path('/tmp/test_tail.txt')
     ofp = open(path, 'wb', buffering=0)
     ifp = open_tail(path)
     ofp.write(b'asdf')
-    import time; time.sleep(999)
+    assert ifp.read(1) == 'a'
+    ofp.write(b'\n')
+    assert ifp.readline() == 'sdf\n'
+    c = None
+    def thread() -> None:
+        nonlocal c
+        c = ifp.read(1)
+    t = threading.Thread(target=thread)
+    t.start()
+    time.sleep(1)
+    assert c is None
+    pre = time.time()
+    ofp.write(b'x')
+    t.join()
+    post = time.time()
+    assert c == 'x'
+    assert post - pre < 0.1
 
-def main() -> None:
+
+def _main() -> None:
     test_tail()
 
-if __name__ == '__main__': main()
+if __name__ == '__main__': _main()

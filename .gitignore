@@ -5,3 +5,4 @@ yopo.log
 __pycache__
 /log
 /screenshots
+sslkeylogfile.txt

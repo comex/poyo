@@ -109,8 +109,8 @@ class GameSnapshot:
 
     @gsmemo
     def player_pos(self) -> Coord: # not camera-relative
-        y, x = self.camera_pos()
-        return x + 8, y + 9
+        x, y = self.camera_pos()
+        return x + 4, y + 4
 
     @gsmemo
     def player_facing(self) -> FacingDirection:
@@ -193,11 +193,11 @@ def state_text(gs: GameSnapshot) -> str:
     bits: list[str] = []
     bits.append(f'Your position: {gs.player_pos()}')
     try:
-        bits.append(f'You are facing: {gs.player_facing().name}')
+        bits.append(f'Facing direction: {gs.player_facing().name}')
     except ValueError:
         logging.exception('welp')
     return '\n'.join(bits)
-    
+
 def main():
     logging.basicConfig(level=logging.DEBUG)
     import argparse

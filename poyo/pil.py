@@ -71,7 +71,10 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
 
                     draw_text = True
 
-                    pfx = STATE_TO_PREFIX[state]
+                    if state not in (TileState.PASSABLE, TileState.REACHABLE, TileState.HERE):
+                        continue
+
+                    pfx = '' # STATE_TO_PREFIX[state]
                     text = f'{pfx}{xpos},{ypos}'
                 if draw_text:
                     text_anchor_x = tile_tl_x + (TILE_WIDTH_PX * SCALE_FACTOR * 2 // 2)

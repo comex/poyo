@@ -39,15 +39,7 @@ def debug_http():
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
 
-While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates prefixed by a letter.  The letter means:
-
-- H means the square is the player's current position.
-- X means the square is impassable.
-- E means the square is passable *and* the entire path from the player's current position to that square is visible on-screen.
-- P means the square is passable but the path from the current position to that square is either off-screen or nonexistent.
-
-Example:
-"E11,9" is the label for the grid square at (x=11, y=9) if it is passable and the path is visible on-screen.
+While in the overworld, screenshots will be annotated with a grid.  Each reachable grid square is overlaid with its coordinates.  Squares which are blocked/impassable do not show coordinates.
 
 After receiving each screenshot, you should respond in three parts.
 - First, describe everything in the screenshot:
@@ -135,7 +127,7 @@ def main_ai(args: Any):
         if not wrap.message_list:
             text = INTRO_TEXT
         elif last_action is not None:
-            text = 'Action {last_action} accepted.\n'
+            text = f'Action {last_action} accepted.\n'
         else:
             text = ''
         text += 'Current state:\n'

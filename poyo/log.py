@@ -10,6 +10,7 @@ import logging
 import html
 import base64
 import time
+import sys
 from datetime import datetime
 
 from .common import log_dir, operation, open_tail
@@ -196,12 +197,12 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
                     yield '<div class="recv log">\n'
                     time_render = str(datetime.fromtimestamp(log.time))
                     yield f'<div class="time">{html.escape(time_render)}</div>\n'
-                    yield f'<div class="recv-body content">\n'
+                    yield f'<div class="recv-body content">'
 
                 yield html.escape(log.delta)
 
                 if log.error or log.finish:
-                    yield '\n</div>\n' # recv-body
+                    yield '</div>\n' # recv-body
                     if log.error:
                         yield '<div class="recv-error">[recv-error]</div>\n'
                     yield '</div>\n' # recv
@@ -213,7 +214,7 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
                 for c in log.content:
                     match c:
                         case TextContent():
-                            yield '<div class="send-text send-content content">\n'
+                            yield '<div class="send-text send-content content">'
                             yield html.escape(c.text)
                             yield '</div>\n'
                         case ImageContent():
@@ -345,6 +346,7 @@ def main():
         case 'html':
             for bit in filtered_log_to_html(filter_log(logs)):
                 print(bit, flush=True, end='')
+                print('.', file=sys.stderr, flush=True, end='')
             print()
         case 'ml':
             from . import openai

@@ -1,18 +1,17 @@
 import os
 os.environ['SSLKEYLOGFILE'] = 'sslkeylogfile.txt'
 
-import struct
 import time
 import re
 # import json
-from typing import Optional, cast
+from typing import Optional, Any
 from pathlib import Path
-from functools import lru_cache, cache
 #from dataclasses import dataclass
 
 from .common import *
 from .log import ImageContent, Message, StatelessWrapper, TextContent
 from .openai import OpenAISession
+from .gamestate import GameSnapshot, reachable_state, state_text
 from . import retroarch
 from . import pil
 
@@ -36,29 +35,6 @@ def debug_http():
     http.client.HTTPConnection.debuglevel = 1 # 2
     # ^ can only go to stdout :(
 #debug_http()
-
-# BUTTON_PRESS_FD = lambda: FunctionDeclaration(
-#     name='button_press',
-#     description='Press one or more buttons in the emulated game.  Buttons will be pressed sequentially for a duration of 1 second.  Instead of a button, you can also pass "wait" to just wait 1 second without pressing anything.',
-#     parameters=Schema(
-#         type=SType.OBJECT,
-#         properties={
-#             'buttons': Schema(
-#                 type=SType.ARRAY,
-#                 min_items=1,
-#                 items=Schema(
-#                     type=SType.STRING,
-#                     format='enum',
-#                     enum=['up', 'down', 'left', 'right', 'a', 'b', 'start', 'select', 'wait'],
-#                 ),
-#             ),
-#         },
-#         required=['buttons'],
-#     ),
-
-# )
-
-
 
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
@@ -116,167 +92,27 @@ def do_action(action: Action) -> None:
         if action != 'wait':
             setattr(pad_state, action, True)
         retroarch.pad_send(pad_state)
-        print('Waiting 1 second...', flush=True, end='')
-        time.sleep(1 if action == 'wait' else 0.25)
-        print('done.')
+        wait_time = 0.25
+        logging.info(f'Waiting {wait_time}s...')
+        time.sleep(wait_time)
+        logging.info('Done waiting.')
         retroarch.pad_send(PadState())
         return
     raise Exception(f'!? {action!r}')
 
-def parse_resp(resp: str) -> Optional[list[Action]]:
+def parse_resp(resp: str) -> Optional[Action]:
     resp = resp.replace('*', '') # sometimes it likes to bold things
     ms = re.findall(r'ACTIONS?"?:\s*"?([a-z]+)', resp, flags=re.I)
     if not ms:
-        print(f'[No ACTION line: {resp!r}]')
+        logging.warning(f'[No ACTION line: {resp!r}]')
         return None
-    #actions = ms[-1]
-    #try:
-    #    parsed1 = json.loads(actions)
-    #except json.decoder.JSONDecodeError:
-    #    print(f'[JSON decode failed: {actions!r}]')
-    #    return None
-    #parsed: list[object]
-    #if isinstance(parsed1, str):
-    #    parsed = [parsed1]
-    #elif isinstance(parsed1, list):
-    #    parsed = parsed1
-    #else:
-    #    print(f'[Not a list: {parsed1!r}]')
-    #    return None
-    #if len(parsed) != 1:
-    #    print(f'[Wrong number of actions: {parsed!r}]')
-    #    return None
-    parsed = [ms[-1]]
-    for action in parsed:
-        if not is_valid_action(action):
-            print(f'[Invalid action: {action!r} in {parsed!r}]')
-            return None
-    return cast(list[Action], parsed)
-
-class Symbols(dict[str, int]):
-    @staticmethod
-    @cache
-    def instance() -> 'Symbols':
-        return Symbols()
-    def __init__(self):
-        super().__init__()
-        matches = re.findall(r'^\s*\$(....) = (\w[^ ]*)\s*$',
-                             Path('data/pokeyellow.map').read_text(),
-                             flags=re.M)
-        for addr_str, name in matches:
-            self[name] = int(addr_str, 16)
-
-
-gsmemo = lru_cache(maxsize=4)
-class GameSnapshot:
-    def __init__(self):
-        self.read_mem = retroarch.read_mem
-        self.symbols = Symbols.instance()
-
-    @gsmemo
-    def camera_pos(self) -> Coord:
-        y, x = self.read_mem(self.symbols['wYCoord'], 2)
-        return x, y
-
-    @gsmemo
-    def tile_map(self) -> TileAccess[int]:
-        raw = bytearray(self.read_mem(self.symbols['wTileMap'], SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES))
-        return TileAccess(raw)
-
-    @gsmemo
-    def collision_data(self) -> bytes:
-        collision_ptr, = struct.unpack('<H', self.read_mem(self.symbols['wTilesetCollisionPtr'], 2))
-        data = self.read_mem(collision_ptr, 256, short_ok=True)
-        data = data[:data.index(b'\xff')]
-        return data
-
-    @gsmemo
-    def passable_map(self) -> bytearray:
-        ret = bytearray(256)
-        for tile_id in self.collision_data():
-            ret[tile_id] = 1
-        return ret
-
-    @gsmemo
-    def player_pos(self) -> Coord: # not camera-relative
-        y, x = self.camera_pos()
-        return x + 8, y + 9
-
-    @gsmemo
-    def in_battle(self) -> int:
-        return self.read_mem(self.symbols['wIsInBattle'], 1)[0]
-
-# Based on LedgeTiles from pokered
-ledge_tile_to_dir = {
-    0x36: (0, 2),
-    0x37: (0, 2),
-    0x27: (-2, 0),
-    0x0d: (2, 0),
-    0x1d: (2, 0),
-}
-def can_visit(frum: Coord, to: Coord, passable_map: bytearray, tile_map: TileAccess[int]) -> Optional[TileState]:
-    if not tile_loc_inbounds(*to):
+    action = ms[-1]
+    if not is_valid_action(action):
+        logging.warning(f'[Invalid action: {action!r}]')
         return None
-    frum_tile, to_tile = tile_map[frum], tile_map[to]
-    frum_ledge_dir = ledge_tile_to_dir.get(frum_tile)
-    to_ledge_dir = ledge_tile_to_dir.get(to_tile)
-    if ledge_dir := frum_ledge_dir or to_ledge_dir:
-        if (
-            to[0] == frum[0] + ledge_dir[0] and
-            to[1] == frum[1] + ledge_dir[1]
-        ):
-            assert not (frum_ledge_dir and to_ledge_dir)
-            if to_ledge_dir:
-                if frum_tile in (0x2c, 0x39):
-                    #print('can_visit: ok for ledge jump "step 1":', frum, to)
-                    return TileState.LEDGE
-                else:
-                    print('can_visit: oddly no good for ledge jump "step 1":', frum, to, hex(frum_tile), hex(to_tile))
-            else:
-                if passable_map[to_tile]:
-                    #print('can_visit: ok for ledge jump "step 2":', frum, to)
-                    return TileState.REACHABLE
-                else:
-                    print('can_visit: oddly no good for ledge jump "step 2":', frum, to, hex(frum_tile), hex(to_tile))
+    return action
 
-        return None
-    if passable_map[to_tile]:
-        return TileState.REACHABLE
-    return None
-
-def reachable_state(gs: GameSnapshot) -> UsefulTileAccess[TileState]:
-    tile_map = gs.tile_map()
-    passable_map = gs.passable_map()
-
-    ret: UsefulTileAccess[TileState] = UsefulTileAccess(
-        cast(list[TileState], bytearray(SCREEN_WIDTH_TILES * SCREEN_HEIGHT_TILES)))
-    for loc, tile_id in tile_map.items():
-        if passable_map[tile_id] and ret.valid_xy(*loc):
-            ret[loc] = TileState.PASSABLE
-
-    player_loc = 8, 9
-    ret[player_loc] = TileState.HERE
-
-    # basic flood fill.
-    todo: list[Coord] = [player_loc]
-    while todo:
-        xt, yt = frum = todo.pop()
-        for to in [
-            (xt - 2, yt),
-            (xt + 2, yt),
-            (xt, yt - 2),
-            (xt, yt + 2),
-        ]:
-            new_state = can_visit(frum, to, passable_map, tile_map)
-            if new_state is not None and new_state > ret[to]:
-                ret[to] = new_state
-                todo.append(to)
-
-    return ret
-
-
-def annotated_screenshot() -> Path:
-    gs = GameSnapshot()
+def annotated_screenshot(gs: GameSnapshot) -> Path:
     return pil.annotate_screenshot(
         path=retroarch.screenshot(),
         camera_pos=gs.camera_pos(),
@@ -285,40 +121,32 @@ def annotated_screenshot() -> Path:
         skip_tiles=bool(gs.in_battle()),
     )
 
-def main():
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s %(levelname)-8s %(message)s',
-    )
+def main_ai(args: Any):
     #do_chat()
-    import argparse
-    ap = argparse.ArgumentParser()
-    ap.add_argument('log_path', nargs='?', type=Path)
-    args = ap.parse_args()
     log_path: Optional[Path] = args.log_path
     if log_path is None:
         log_path, _ = get_unique_path(0, log_dir, 'log', 2, '.txt')
     print(log_path)
     wrap = StatelessWrapper(OpenAISession(), log_path)
 
-    pre_prompt: Optional[str] = None # won't save, but whatever
+    last_action = None
     while True:
+        gs = GameSnapshot()
         if not wrap.message_list:
             text = INTRO_TEXT
-            assert pre_prompt is None
+        elif last_action is not None:
+            text = 'Action {last_action} accepted.\n'
         else:
-            text = '\n'
-            if pre_prompt is not None:
-                text += pre_prompt
-            text += 'Action accepted.  Current screenshot:'
-        pre_prompt = None
-        ss = annotated_screenshot()
+            text = ''
+        text += 'Current state:\n'
+        text += state_text(gs)
+        ss = annotated_screenshot(gs)
         resp: str = wrap.send(Message(role='user', content=[
             TextContent(text=text),
             ImageContent.from_name(ss.name),
         ]))
         bad_count = 0
-        while (actions := parse_resp(resp)) is None:
+        while (action := parse_resp(resp)) is None:
             bad_count += 1
             if bad_count >= 10:
                 raise Exception('something is very wrong')
@@ -327,17 +155,38 @@ def main():
                 TextContent(text=admonish),
             ]))
 
-        #if len(actions) > 3:
-        #    need_actions_admonish = True
-        #    actions = actions[:3]
-        #    pre_prompt = f'Too many actions.  Using the first 3 ({json.dumps(actions)}) and ignoring the rest.'
-        for action in actions:
-            do_action(action)
-        print('Waiting 1 more second for any responses...', flush=True, end='')
+        do_action(action)
+        last_action = action
+
+        logging.info('Waiting 1 more second for game...')
         time.sleep(1)
-        print('done.')
+        logging.info('done.')
+
+def main_screenshot(args: Any):
+    if args.annotated:
+        path = annotated_screenshot(GameSnapshot())
+    else:
+        path = retroarch.screenshot()
+    print(path)
+
+def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    subparsers = ap.add_subparsers(required=True)
+    xap = subparsers.add_parser('ai')
+    xap.add_argument('log_path', nargs='?', type=Path)
+    xap.set_defaults(func=main_ai)
+    xap = subparsers.add_parser('screenshot')
+    xap.add_argument('-a', '--annotated', action='store_true')
+    xap.set_defaults(func=main_screenshot)
+    args = ap.parse_args()
+    args.func(args)
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s %(levelname)-8s %(message)s',
+    )
     main()
     #print(GameSnapshot().camera_pos())
     #print(annotated_screenshot())

@@ -1,5 +1,6 @@
 from pathlib import Path
 from .common import *
+from .gamestate import TileState, UsefulTileAccess, TileAccess, SCREEN_WIDTH_TILES, SCREEN_HEIGHT_TILES, TILE_WIDTH_PX, TILE_HEIGHT_PX
 
 
 STATE_TO_COLOR = {

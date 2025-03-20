@@ -13,13 +13,19 @@ from .log import ImageContent, Message, MessageList, RecvLog, TextContent, filte
 
 class OpenAISession:
     def __init__(self):
-        api_key = (Path(__file__).parent / '../secrets/openai_api_key.txt').read_text().strip()
-        self.s = requests.Session()
-        self.s.headers['Authorization'] = f'Bearer {api_key}'
         #self.model = 'gpt-4.5-preview'
         #self.model = 'o3-mini'
         #self.model = 'o1'
-        self.model = 'gpt-4o'
+        #self.model = 'gpt-4o'
+        #self.base_url = 'https://api.openai.com/v1'
+        self.base_url = 'https://generativelanguage.googleapis.com/v1beta/openai'
+        self.model = 'gemini-2.0-flash-thinking-exp-01-21'
+        api_key_file = 'gemini_api_key_free.txt'
+
+        api_key = (Path(__file__).parent / f'../secrets/{api_key_file}').read_text().strip()
+        self.s = requests.Session()
+        self.s.headers['Authorization'] = f'Bearer {api_key}'
+
         retry = requests.adapters.Retry(
             10000,
             status_forcelist={429, 503},
@@ -27,6 +33,10 @@ class OpenAISession:
             allowed_methods={'HEAD', 'GET', 'PUT', 'DELETE', 'OPTIONS', 'TRACE', 'POST'},
         )
         self.s.mount('https://', requests.adapters.HTTPAdapter(max_retries=retry))
+        #self.models_list()
+
+    def models_list(self):
+        print(self.s.get(f'{self.base_url}/models').json())
 
 
     @cached_property
@@ -34,7 +44,7 @@ class OpenAISession:
         with operation(f'loading encoding for {self.model}'):
             import tiktoken
             model = self.model
-            if model.startswith('gpt-4.5'):
+            if model.startswith('gpt-4.5') or model.startswith('gemini'):
                 # https://github.com/dotnet/machinelearning/issues/7404
                 logging.warning(f'Using gpt-4o tokenizer for {model}')
                 model = 'gpt-4o'
@@ -44,8 +54,18 @@ class OpenAISession:
         return len(self.encoding.encode(text))
 
     def tokens_for_image_size(self, size: tuple[int, int]) -> int:
-        tiles = ceil(size[0] / 512) * ceil(size[1] / 512)
-        return 85 + 170 * tiles
+        if self.model.startswith('gemini-2'):
+            tile_size = 768
+            tile_cost = 258
+            fixed_cost = 0
+        elif self.base_url == 'https://api.openai.com/v1':
+            tile_size = 512
+            tile_cost = 170
+            fixed_cost = 85
+        else:
+            raise Exception('?')
+        tiles = ceil(size[0] / tile_size) * ceil(size[1] / tile_size)
+        return fixed_cost + tile_cost * tiles
 
     def send(self, ml: MessageList) -> Iterable[RecvLog]:
         req = {
@@ -55,10 +75,10 @@ class OpenAISession:
         }
         if self.model == 'o1':
             req['reasoning_effort'] = 'low'
-        print('>>>>', req)
+        #print('>>>>', req)
         yielded_any = False
         with self.s.post(
-            'https://api.openai.com/v1/chat/completions',
+            f'{self.base_url}/chat/completions',
             json=req,
             stream=True,
         ) as resp:
@@ -93,9 +113,10 @@ class OpenAISession:
                         rlog.delta = content
 
                     rlog.start = not yielded_any
-                    if choice['finish_reason'] == 'stop':
+                    finish_reason = choice.get('finish_reason')
+                    if finish_reason == 'stop':
                         rlog.finish = True
-                    elif choice['finish_reason']:
+                    elif finish_reason:
                         rlog.error = True
 
                     yielded_any = True
@@ -108,7 +129,6 @@ class OpenAISession:
                         logging.warning(f'Yielding fake RecvLog due to exception {type(e)}')
                         yield RecvLog(time=time.time(), orig_resp=rdata, error=True)
                     raise
-
 
 
 def main() -> None:

@@ -49,7 +49,7 @@ def screenshot() -> Path:
         #print('...waiting for shot')
         time.sleep(0.05)
     post = time.time()
-    print('got', path, 'after', post - pre)
+    logging.info(f'got {path} after {post - pre}')
     new_path, next_screenshot_id = get_unique_path(next_screenshot_id, log_dir, 'ss', 5, '.png')
     path.rename(new_path)
     return new_path
@@ -66,8 +66,11 @@ PAD_STATE_ATTR_TO_RETRO_DEVICE_ID = {
     'select': 2,
 }
 
+ever_pad_sent = False
 def pad_send(state: PadState):
     # https://github.com/libretro/RetroArch/blob/9cad6dd993c192030857733d8bd5f27616ece544/cores/libretro-net-retropad/net_retropad_core.c#L81
+    global ever_pad_sent
+    ever_pad_sent = True
     print('pad_send:', state.as_list())
     msgs: list[bytes] = []
     for pad_state_attr, retro_device_id in PAD_STATE_ATTR_TO_RETRO_DEVICE_ID.items():
@@ -85,8 +88,9 @@ def pad_send(state: PadState):
 
 @atexit.register
 def clear_pad() -> None:
-    print('clear_pad')
-    pad_send(PadState())
+    if ever_pad_sent:
+        print('clear_pad')
+        pad_send(PadState())
 
 def read_mem(addr: int, size: int, short_ok: bool = False) -> bytes:
     ret = None
@@ -104,11 +108,3 @@ def read_mem(addr: int, size: int, short_ok: bool = False) -> bytes:
     except Exception as e:
         e.add_note(f'in read_mem({addr:#x}, {size}), ret={ret!r}')
         raise
-
-#if __name__ == '__main__': main()
-#def x():
-#    #print(rc_send_and_recv(f'READ_CORE_MEMORY FF42 2'), rc_send_and_recv(f'READ_CORE_MEMORY FFAE 3'))
-#    while True:
-#        #print(rc_send_and_recv(f'READ_CORE_MEMORY C100 16'))
-#        print(rc_send_and_recv(f'READ_CORE_MEMORY D360 2'))
-#        time.sleep(0.2)

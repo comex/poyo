@@ -1,7 +1,6 @@
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Generic, Iterator, Protocol, TypeVar, Iterable, Callable
-from enum import IntEnum
+from typing import Iterator, TypeVar, Callable
 from contextlib import contextmanager
 import io
 import time
@@ -56,53 +55,6 @@ class ShortReadError(Exception):
 def assert_int(x: float) -> int:
     assert int(x) == x, x
     return int(x)
-
-SCREEN_WIDTH_TILES = 20
-SCREEN_HEIGHT_TILES = 18
-TILE_WIDTH_PX = 8
-TILE_HEIGHT_PX = 8
-
-class TileState(IntEnum):
-    IMPASSABLE = 0
-    PASSABLE = 1
-    REACHABLE = 2
-    LEDGE = 3
-    HERE = 4
-
-def tile_loc_inbounds(x: int, y: int) -> bool:
-    return (
-        0 <= x < SCREEN_WIDTH_TILES and
-        0 <= y < SCREEN_HEIGHT_TILES
-    )
-
-class IntGetSet(Protocol[T]):
-    def __setitem__(self, index: int, value: T, /) -> None: ...
-    def __getitem__(self, index: int, /) -> T: ...
-
-class TileAccess(Generic[T]):
-    def __init__(self, igs: IntGetSet[T]) -> None:
-        self.igs = igs
-    def __getitem__(self, key: Coord) -> T:
-        return self.igs[self.key2index(key)]
-    def __setitem__(self, key: Coord, value: T) -> None:
-        self.igs[self.key2index(key)] = value
-    def key2index(self, key: Coord) -> int:
-        x, y = key
-        assert tile_loc_inbounds(x, y), (x, y)
-        assert self.valid_xy(x, y)
-        return y * SCREEN_WIDTH_TILES + x
-    def valid_xy(self, x: int, y: int) -> bool:
-        return True
-    def items(self) -> Iterable[tuple[Coord, T]]:
-        for y in range(SCREEN_HEIGHT_TILES):
-            for x in range(SCREEN_WIDTH_TILES):
-                if self.valid_xy(x, y):
-                    tup = x, y
-                    yield (tup, self[tup])
-
-class UsefulTileAccess(Generic[T], TileAccess[T]):
-    def valid_xy(self, x: int, y: int) -> bool:
-        return x % 2 == 0 and y % 2 == 1
 
 def xtime(f: Callable[[], T]) -> T:
     a = time.time()

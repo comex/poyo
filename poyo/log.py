@@ -71,16 +71,24 @@ class ImageContent(ContentBase):
 
 Content = Union[TextContent, ImageContent]
 
-@dataclass
-class LogBase:
-    time: float = 0.0
+@dataclass(frozen=True)
+class MessageTag:
+    kind: Literal[
+        'response',
+        'send_misc',
+        'initial_instructions',
+        'acceptance',
+        'state_only',
+        'invalid_admonish',
+    ]
 
+Role = Literal['user', 'developer', 'assistant']
 @dataclass(eq=False)
 class Message:
-    role: Literal['user', 'developer', 'assistant']
+    role: Role
     content: list[Content]
     if TYPE_CHECKING:
-        ref: Sequence[LogBase] = field(init=False)
+        ref: Sequence['LogBase'] = field(init=False)
 
     @cache
     def tokens(self, sess: StatelessSession) -> int:
@@ -89,10 +97,24 @@ class Message:
     def dump_for_openai(self) -> Any:
         return {'role': self.role, 'content': [c.dump_for_openai() for c in self.content]}
 
+    @property
+    def tag(self) -> MessageTag:
+        assert self.ref
+        for log in self.ref:
+            if isinstance(log, SendLog):
+                return log.tag
+        return MessageTag(kind='response')
+
 @dataclass
-class SendLog(LogBase, Message):
+class LogBase:
+    time: float = 0.0
+
+@dataclass
+class SendLog(LogBase):
     type: Literal['send'] = 'send'
-    tag: Any = None
+    tag: MessageTag = MessageTag(kind='send_misc')
+    role: Role = 'assistant'
+    content: list[Content] = []
 
 @dataclass
 class RecvLog(LogBase):
@@ -263,7 +285,7 @@ class StatelessWrapper:
         self.sess = sess
 
         self.token_limit = 32000
-        self.max_history_images = 0
+        self.max_history_images = 2
 
         self.message_list = MessageList(sess)
         self.fp = open(log_path, 'r+')
@@ -271,12 +293,30 @@ class StatelessWrapper:
             self.message_list.append(m)
 
     def trim(self) -> None:
-        n = 0
-        while self.message_list.total_tokens > self.token_limit:
-            self.message_list.pop(0)
-            n += 1
-        if n:
-            logging.warning(f'Trimmed {n} messages to get total_tokens down to {self.message_list.total_tokens}')
+        trim_tags: list[MessageTag] = []
+        old_tokens = self.message_list.total_tokens
+        i = 0
+        while (
+            i < len(self.message_list) and
+            self.message_list.total_tokens > self.token_limit
+        ):
+            tag = self.message_list[i].tag
+            match tag.kind:
+                case 'initial_instructions':
+                    should_trim = False
+                case _:
+                    should_trim = True
+            if should_trim:
+                self.message_list.pop(i)
+                trim_tags.append(tag)
+            else:
+                i += 1
+        if trim_tags:
+            trim_tag_kinds = [tag.kind for tag in trim_tags]
+            logging.warning(f'Trimmed {len(trim_tags)} messages to get total_tokens down from {old_tokens} to {self.message_list.total_tokens}: {trim_tag_kinds}')
+        if self.message_list.total_tokens > self.token_limit:
+            logging.error(f'After trimming we were still over the token limit! {self.message_list.total_tokens} > {self.token_limit}')
+
     def remove_images(self) -> None:
         remaining = self.max_history_images
         for i, m in reversed(list(enumerate(self.message_list))):
@@ -290,6 +330,7 @@ class StatelessWrapper:
                               TextContent('[image]'))
                              for c in m.content]
                 )
+                new_m.ref = m.ref
                 self.message_list[i] = new_m
 
     def log(self, log: Log) -> None:
@@ -298,12 +339,14 @@ class StatelessWrapper:
         self.fp.write(json.dumps(j) + '\n')
         self.fp.flush()
 
-    def send(self, m: Message) -> str:
+    def send(self, m: Message, tag: MessageTag) -> str:
         self.remove_images()
+        send_log = SendLog(time=time.time(), role=m.role, content=m.content, tag=tag)
+        m.ref = [send_log]
         self.message_list.append(m)
         self.trim()
         logging.info(f'when sending, total_tokens is now at {self.message_list.total_tokens}')
-        self.log(SendLog(time=time.time(), role=m.role, content=m.content))
+        self.log(send_log)
         ret = ''
         rlogs: list[RecvLog] = []
         for rlog in self.sess.send(self.message_list):

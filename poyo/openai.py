@@ -14,14 +14,14 @@ from .log import ImageContent, Message, MessageList, RecvLog, TextContent, filte
 class OpenAISession:
     def __init__(self):
         #self.model = 'gpt-4.5-preview'
-        self.model = 'o1'
+        #self.model = 'o1'
         #self.model = 'gpt-4o'
-        self.base_url = 'https://api.openai.com/v1'
-        #self.base_url = 'https://generativelanguage.googleapis.com/v1beta/openai'
-        #self.model = 'gemini-2.0-flash-thinking-exp-01-21'
+        #self.base_url = 'https://api.openai.com/v1'
+        self.base_url = 'https://generativelanguage.googleapis.com/v1beta/openai'
+        self.model = 'gemini-2.0-flash-thinking-exp-01-21'
         #self.model = 'gemini-2.0-pro-exp-02-05'
-        #api_key_file = 'gemini_api_key.txt'
-        api_key_file = 'openai_api_key.txt'
+        api_key_file = 'gemini_api_key.txt'
+        #api_key_file = 'openai_api_key.txt'
 
         api_key = (Path(__file__).parent / f'../secrets/{api_key_file}').read_text().strip()
         self.s = requests.Session()

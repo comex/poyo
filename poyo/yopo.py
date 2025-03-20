@@ -9,7 +9,7 @@ from pathlib import Path
 #from dataclasses import dataclass
 
 from .common import *
-from .log import ImageContent, Message, StatelessWrapper, TextContent
+from .log import ImageContent, Message, MessageTag, StatelessWrapper, TextContent
 from .openai import OpenAISession
 from .gamestate import GameSnapshot, reachable_state, state_text
 from . import retroarch
@@ -41,10 +41,10 @@ You are connected to an emulator playing a game of Pokémon Yellow Version.  You
 
 While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates.  Squares which are blocked/impassable have coordinates in *orange*; squares which are walkable have coordinates in *white*.
 
-After receiving each screenshot, you should respond in three parts.
-- First, describe everything in the screenshot:
-  - For each grid square with an identifiable object on it (NOT floor), briefly describe it and state its coordinates.  DO NOT list floor / ground / "empty space" squares or other repetitive squares.  DO NOT list out-of-bounds squares.
-  - For all game text on the screen (NOT coordinates from the overlay), recite the entire text.
+After receiving each screenshot, you should respond in two parts.
+- First, describe everything NEW or CHANGED in the screenshot:
+  - For each grid square with an identifiable object on it (NOT floor) which is newly visible or changed, briefly describe it and state its coordinates.
+  - For all new or changed game text on the screen (NOT coordinates from the overlay), recite the entire text.
 - Then, explain your current thinking.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action in quotes.
 
@@ -65,6 +65,7 @@ ACTION: "right"
 Tips:
 - Don't assume the exit is in a specific direction.  Explore the whole area.
 - Every so often, you should summarize your progress since the last summary and list the coordinates you've explored.  Try to assess your high-level strategy and how well it's working, and make recommendations about how you should proceed.
+- The game is NOT broken.  If you think you can't move in a direction, it means that either you're up against a wall or you're getting confused in some other way.  Do not give up; instead, revisit your assumptions.
 '''
 # TODO: make the 'every so often' an actual trigger
 #"wait": press nothing, just wait 1 second
@@ -131,17 +132,20 @@ def main_ai(args: Any):
         gs = GameSnapshot()
         if not wrap.message_list:
             text = INTRO_TEXT
+            tag = MessageTag(kind='initial_instructions')
         elif last_action is not None:
             text = f'Action {last_action} accepted.\n'
+            tag = MessageTag(kind='acceptance')
         else:
             text = ''
+            tag = MessageTag(kind='state_only')
         text += 'Current state:\n'
         text += state_text(gs)
         ss = annotated_screenshot(gs)
         resp: str = wrap.send(Message(role='user', content=[
             TextContent(text=text),
             ImageContent.from_name(ss.name),
-        ]))
+        ]), tag)
         bad_count = 0
         while (action := parse_resp(resp)) is None:
             bad_count += 1
@@ -150,7 +154,7 @@ def main_ai(args: Any):
             admonish = ADMONISH_TEXT
             resp = wrap.send(Message(role='user', content=[
                 TextContent(text=admonish),
-            ]))
+            ]), tag=MessageTag(kind='invalid_admonish'))
 
         do_action(action)
         last_action = action

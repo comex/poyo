@@ -113,8 +113,10 @@ class GameSnapshot:
         return x + 4, y + 4
 
     @gsmemo
-    def player_facing(self) -> FacingDirection:
+    def player_facing(self) -> Optional[FacingDirection]:
         raw = self.read_mem(self.symbols['wPlayerDirection'], 1)[0]
+        if raw == 0:
+            return None
         return FacingDirection(raw)
 
     @gsmemo
@@ -193,7 +195,9 @@ def state_text(gs: GameSnapshot) -> str:
     bits: list[str] = []
     bits.append(f'Your position: {gs.player_pos()}')
     try:
-        bits.append(f'Facing direction: {gs.player_facing().name}')
+        facing = gs.player_facing()
+        fname = facing.name if facing is not None else 'Unknown'
+        bits.append(f'Facing direction: {fname}')
     except ValueError:
         logging.exception('welp')
     return '\n'.join(bits)

@@ -14,13 +14,14 @@ from .log import ImageContent, Message, MessageList, RecvLog, TextContent, filte
 class OpenAISession:
     def __init__(self):
         #self.model = 'gpt-4.5-preview'
-        #self.model = 'o3-mini'
-        #self.model = 'o1'
+        self.model = 'o1'
         #self.model = 'gpt-4o'
-        #self.base_url = 'https://api.openai.com/v1'
-        self.base_url = 'https://generativelanguage.googleapis.com/v1beta/openai'
-        self.model = 'gemini-2.0-flash-thinking-exp-01-21'
-        api_key_file = 'gemini_api_key_free.txt'
+        self.base_url = 'https://api.openai.com/v1'
+        #self.base_url = 'https://generativelanguage.googleapis.com/v1beta/openai'
+        #self.model = 'gemini-2.0-flash-thinking-exp-01-21'
+        #self.model = 'gemini-2.0-pro-exp-02-05'
+        #api_key_file = 'gemini_api_key.txt'
+        api_key_file = 'openai_api_key.txt'
 
         api_key = (Path(__file__).parent / f'../secrets/{api_key_file}').read_text().strip()
         self.s = requests.Session()
@@ -33,7 +34,7 @@ class OpenAISession:
             allowed_methods={'HEAD', 'GET', 'PUT', 'DELETE', 'OPTIONS', 'TRACE', 'POST'},
         )
         self.s.mount('https://', requests.adapters.HTTPAdapter(max_retries=retry))
-        #self.models_list()
+        self.models_list()
 
     def models_list(self):
         print(self.s.get(f'{self.base_url}/models').json())
@@ -107,8 +108,7 @@ class OpenAISession:
                     choice = rdata['choices'][0]
 
 
-                    if choice['delta']:
-                        content = choice['delta']['content']
+                    if content := choice['delta'].get('content'):
                         assert isinstance(content, str)
                         rlog.delta = content
 

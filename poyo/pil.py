@@ -18,7 +18,7 @@ STATE_TO_PREFIX = {
     TileState.LEDGE:      'E',
     TileState.HERE:       'H',
 }
-SCALE_FACTOR = 4
+SCALE_FACTOR = 3.5
 JUST_DRAW_TILES = False
 def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTileAccess[TileState], tile_map: TileAccess[int], skip_tiles: bool) -> Path:
     out_path = path.with_suffix('.annotated.png')
@@ -29,8 +29,8 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
         ow, oh = image.size
         assert (ow, oh) == (160, 144)
         big = image.resize(
-            (ow * SCALE_FACTOR, oh * SCALE_FACTOR),
-            #resample=Image.Resampling.NEAREST,
+            (int(ow * SCALE_FACTOR), int(oh * SCALE_FACTOR)),
+            resample=Image.Resampling.NEAREST,
         )
         draw = ImageDraw.Draw(big, 'RGBA')
 
@@ -51,8 +51,8 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
                 tile = tile_map[xt, yt]
                 is_map = tile <= 0x5f
                 if JUST_DRAW_TILES:
-                    tile_tl_x = xt * TILE_WIDTH_PX * SCALE_FACTOR
-                    tile_tl_y = yt * TILE_HEIGHT_PX * SCALE_FACTOR
+                    tile_tl_x = int(xt * TILE_WIDTH_PX * SCALE_FACTOR)
+                    tile_tl_y = int(yt * TILE_HEIGHT_PX * SCALE_FACTOR)
                     text = f'{xt},{yt}=\n${tile_map[xt,yt]:x}'
                     fg_color = 'white' if is_map else 'red'
                     #stroke_color = 'black'
@@ -67,12 +67,13 @@ def annotate_screenshot(path: Path, camera_pos: Coord, reachable_state: UsefulTi
 
                     state = reachable_state[xt, yt]
                     #fg_color, stroke_color = STATE_TO_COLOR[state]
-                    fg_color = 'white'
 
                     draw_text = True
 
-                    if state not in (TileState.PASSABLE, TileState.REACHABLE, TileState.HERE):
-                        continue
+                    if state in (TileState.PASSABLE, TileState.REACHABLE, TileState.HERE):
+                        fg_color = 'white'
+                    else:
+                        fg_color = 'orange'
 
                     pfx = '' # STATE_TO_PREFIX[state]
                     text = f'{pfx}{xpos},{ypos}'

@@ -39,11 +39,11 @@ def debug_http():
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
 
-While in the overworld, screenshots will be annotated with a grid.  Each reachable grid square is overlaid with its coordinates.  Squares which are blocked/impassable do not show coordinates.
+While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates.  Squares which are blocked/impassable have coordinates in *orange*; squares which are walkable have coordinates in *white*.
 
 After receiving each screenshot, you should respond in three parts.
 - First, describe everything in the screenshot:
-  - For each grid square with an identifiable object on it (NOT floor), briefly describe it and state its coordinates.  DO NOT list floor / ground / "empty space" squares or other repetitive squares.
+  - For each grid square with an identifiable object on it (NOT floor), briefly describe it and state its coordinates.  DO NOT list floor / ground / "empty space" squares or other repetitive squares.  DO NOT list out-of-bounds squares.
   - For all game text on the screen (NOT coordinates from the overlay), recite the entire text.
 - Then, explain your current thinking.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action in quotes.
@@ -61,7 +61,12 @@ The following actions are available (each button will be pressed for 0.5 seconds
 Examples:
 ACTION: "a"
 ACTION: "right"
+
+Tips:
+- Don't assume the exit is in a specific direction.  Explore the whole area.
+- Every so often, you should summarize your progress since the last summary and list the coordinates you've explored.  Try to assess your high-level strategy and how well it's working, and make recommendations about how you should proceed.
 '''
+# TODO: make the 'every so often' an actual trigger
 #"wait": press nothing, just wait 1 second
 
 ADMONISH_TEXT = '''

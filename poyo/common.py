@@ -7,7 +7,8 @@ import time
 import faulthandler
 import signal
 import logging
-import subprocess
+import re
+import asyncio
 import sys
 import threading
 from typing_extensions import Buffer
@@ -21,6 +22,16 @@ if hasattr(signal, 'SIGINFO'):
     faulthandler.register(signal.SIGINFO)
 
 log_dir = (Path(__file__).parent / '../log').resolve()
+
+def latest_log() -> Path:
+    paths: list[tuple[float, Path]] = []
+    for path in log_dir.iterdir():
+        if not re.match(r'log[0-9]+\.txt$', path.name):
+            continue
+        paths.append((path.stat().st_mtime, path))
+    paths.sort()
+    assert paths
+    return paths[-1][1]
 
 def get_unique_path(next_id: int, dir: Path, prefix: str, precision: int, suffix: str) -> tuple[Path, int]:
     while True:
@@ -71,15 +82,27 @@ def operation(desc: str) -> Iterator[None]:
     b = time.time()
     logging.info(f'{desc}: finished after {1000 * (b - a):.0f}ms')
 
+async def tail(filename: Path) -> AsyncIterator[bytes]:
+    p = await asyncio.create_subprocess_exec(
+        sys.executable, '-m', 'poyo.janitor', 'tail', '-n', '+1', '-f', '--', filename,
+        limit=0,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+    )
+    assert p.stdin is not None
+    assert p.stdout is not None
+    try:
+        pass
+    finally:
+        # janitor will clean up when stdin is closed.
+        # don't kill since that won't affect the child.
+        # don't close stdout since we can't with asyncio.
+        # no need to wait_closed either
+        p.stdin.close()
 class Tail(io.RawIOBase):
     def __init__(self, filename: Path):
         filename.stat() # raise error if not accessible
-        self.p = subprocess.Popen(
-            [sys.executable, '-m', 'poyo.janitor', 'tail', '-n', '+1', '-f', '--', filename],
-            bufsize=0,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-        )
+        self.p = 
         assert self.p.stdout is not None
         assert self.p.stdin is not None
         self.stdout = self.p.stdout

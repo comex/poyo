@@ -4,6 +4,9 @@ from typing import Optional
 import subprocess
 import re
 import time
+import select
+
+from poyo.common import Tail
 
 # (started as) lowest effort possible
 class MyHTTPRequestHandler(SimpleHTTPRequestHandler):
@@ -33,19 +36,19 @@ class MyHTTPRequestHandler(SimpleHTTPRequestHandler):
             bufsize = 30
 
     def do_tail(self, path: Path) -> None:
-        p: Optional[subprocess.Popen[bytes]] = None
-        try:
-            p = subprocess.Popen(['tail', '-c', '99999999', '-f', '--', path], stdout=subprocess.PIPE, bufsize=0)
-            assert p.stdout is not None
-            while buf := p.stdout.read(8192):
-                #print(repr(buf))
-                self.wfile.write(buf)
-                self.wfile.flush()
-                #import time; time.sleep(0.5)
-            print('it exited?')
-        finally:
-            if p is not None:
-                p.terminate()
+        with Tail(path) as tail:
+            print('hi')
+            while True:
+                r, _, x = select.select([tail, self.wfile], [], [])
+                if self.wfile in r or self.wfile in x:
+                    break
+                if tail in r:
+                    try:
+                        self.wfile.write(tail.read(8192))
+                        self.wfile.flush()
+                    except BrokenPipeError:
+                        break
+        print('bye')
     
 
 

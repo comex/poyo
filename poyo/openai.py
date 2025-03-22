@@ -78,6 +78,7 @@ class OpenAISession:
             req['reasoning_effort'] = 'low'
         #print('>>>>', req)
         yielded_any = False
+        yielded_finish = False
         with self.s.post(
             f'{self.base_url}/chat/completions',
             json=req,
@@ -105,11 +106,21 @@ class OpenAISession:
                     rlog = RecvLog(time=time.time(), orig_resp=rdata)
 
                     assert rdata['object'] == 'chat.completion.chunk'
-                    assert len(rdata['choices']) == 1
+
+                    # Note: Real OpenAI API is good at always including all the
+                    # fields, but Google's emulation likes to drop them
+
+                    choices = rdata.get('choices', [])
+                    if not choices:
+                        logging.warning(f'Got empty/missing "choices" field: {line!r}')
+                        continue
+
+                    if len(choices) > 1:
+                        raise Exception('Got multiple choices')
+
                     choice = rdata['choices'][0]
 
-
-                    if content := choice['delta'].get('content'):
+                    if content := choice.get('delta', {}).get('content'):
                         assert isinstance(content, str)
                         rlog.delta = content
 
@@ -117,8 +128,12 @@ class OpenAISession:
                     finish_reason = choice.get('finish_reason')
                     if finish_reason == 'stop':
                         rlog.finish = True
+                        yielded_finish = True
                     elif finish_reason:
                         rlog.error = True
+                        yielded_finish = True
+                    elif not content:
+                        logging.warning(f'Got no content nor finish_reason (Google can do this): {line!r}')
 
                     yielded_any = True
                     signal = yield rlog
@@ -126,14 +141,20 @@ class OpenAISession:
                         logging.error('Breaking early due to stop signal')
                         break
 
-
                 except BaseException as e:
-                    if isinstance(e, Exception):
+                    if isinstance(e, Exception): # not KeyboardInterrupt etc?
                         logging.exception(f'Got exception while parsing line {line!r}')
-                    if yielded_any:
+                    if yielded_any and not yielded_finish:
                         logging.warning(f'Yielding fake RecvLog due to exception {type(e)}')
-                        yield RecvLog(time=time.time(), orig_resp=rdata, error=True)
+                        yielded_finish = True
+                        _signal = yield RecvLog(time=time.time(), orig_resp=rdata, error=True)
+                        # ignore signal since we're about to raise
                     raise
+
+        if not yielded_finish:
+            logging.warning(f'Yielding fake RecvLog due to never getting a stop or error')
+            _signal = yield RecvLog(time=time.time(), orig_resp='<fake log from send>', error=True)
+            # ignore signal since we're done
 
 
 def main() -> None:

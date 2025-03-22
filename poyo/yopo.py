@@ -36,6 +36,8 @@ def debug_http():
     # ^ can only go to stdout :(
 #debug_http()
 
+ENABLE_NEW_OR_CHANGED = False
+
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
 
@@ -44,10 +46,9 @@ While in the overworld, screenshots will be annotated with a grid.  Each grid sq
 The coordinate origin is top left; higher Y coordinates are lower on the screen.
 
 After receiving each screenshot, you should respond in two parts.
-- First, describe everything in the screenshot:
-  - For each grid square with an identifiable object on it (NOT floor), briefly describe it and state its coordinates.
-  - For all game text on the screen (NOT coordinates from the overlay), recite the entire text.
-- Then, state what (if anything) changed since the last screenshot.
+- First, describe everything [NC:NEW or CHANGED ]in the screenshot:
+  - For each grid square with an identifiable object on it (NOT floor)[NC: which is newly visible or changed], briefly describe it and state its coordinates.
+  - For all [NC:new or changed ]game text on the screen (NOT coordinates from the overlay), recite the entire text.
 - Then, explain your current thinking and goals.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action.
 
@@ -73,6 +74,8 @@ Do not give up!  Instead, revisit your assumptions.
 - Only write in English.
 '''
 #"wait": press nothing, just wait 1 second
+
+INTRO_TEXT = re.sub(r'\[NC:(.*?)\]', lambda m: m[1] if ENABLE_NEW_OR_CHANGED else '', INTRO_TEXT) # type: ignore
 
 NO_ACTION_TEXT = '''
 Could not parse ACTION line out of that response.  Try again.
@@ -189,7 +192,7 @@ def state_machine(ml: MessageList) -> tuple[Message, MessageTags]:
         else:
             need_shot = True
 
-        if False: # no list_all
+        if ENABLE_NEW_OR_CHANGED:
             last_listall_idx = ml.last_message_idx_with_tag('list_all')
             if (
                 need_shot and
@@ -259,7 +262,7 @@ def main_ai(args: Any):
 
     while True:
         remove_trailing_sends(wrap)
-        remove_images(wrap, max_images=2)
+        remove_images(wrap, max_images=0)
         trim_to_token_limit(wrap)
         m, tags = state_machine(wrap.message_list)
         wrap.send(m, tags)

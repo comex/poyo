@@ -80,25 +80,28 @@ class Tail(io.RawIOBase):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
         )
+        assert self.p.stdout is not None
+        assert self.p.stdin is not None
+        self.stdout = self.p.stdout
+        self.stdin = self.p.stdin
 
     def read(self, size: int = -1, /) -> bytes:
-        assert self.p.stdout is not None # for typing
-        return self.p.stdout.read(size)
+        return self.stdout.read(size)
 
     def readinto(self, b: Buffer, /) -> int:
-        assert self.p.stdout is not None # for typing
-        return self.p.stdout.readinto(b) # type: ignore
+        return self.stdout.readinto(b) # type: ignore
 
     def readable(self):
         assert not self.closed
         return True
 
     def close(self) -> None:
-        assert self.p.stdin is not None # for typing
-        assert self.p.stdout is not None # for typing
-        self.p.stdin.close()
-        self.p.stdout.close()
+        self.stdin.close()
+        self.stdout.close()
         super().close()
+
+    def fileno(self) -> int:
+        return self.stdout.fileno()
 
 def open_tail(filename: Path) -> io.TextIOWrapper:
     tail = Tail(filename)

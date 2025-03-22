@@ -1,5 +1,5 @@
 body {
-    max-width: 700px;
+    max-width: 900px;
     font-size: 90%;
 }
 .send-text {
@@ -24,18 +24,38 @@ body {
 }
 .time {
 }
+.send-image {
+    float: right;
+    outline: 1px solid #888;
+    box-shadow: rgba(0, 0, 0, 0.15) -1px 2px 4px;
+}
+.send-image-header {
+    background-color: #c0c4f7;
+    font-family: monospace;
+    text-align: center;
+    padding: 3px 0;
+    display: none;
+}
 .send-image img {
     width: 320px;
     height: 288px;
+    border: 5px solid white;
 }
 
-.content {
+.send-body, .recv-body {
     padding: 5px;
+}
+.send-text, .recv-text {
     white-space: pre-wrap;
 }
 .log-header {
     background-color: #00c4c7;
     font-family: monospace;
+    padding: 3px;
+    outline: 1px solid #888;
+}
+.clear {
+    clear: both;
 }
 .who {
     /*background-color: #00ef40;*/
@@ -48,17 +68,8 @@ body {
     mask-image: linear-gradient(to bottom, black, transparent);
 }
 .instructions {
-    position: relative;
-}
-.instructions-snip::after {
     border-bottom: 1px solid #cccccc;
-    content: '';
-    margin-top: -6px;
-    width: 100%;
-    display: block;
 }
 .instructions-snip {
     text-align: center;
-    position: absolute;
-    width: 100%;
 }

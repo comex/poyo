@@ -209,10 +209,10 @@ def tag_instructions(data: str) -> str:
 def render_header(time: float, who: str) -> str:
     time_render = str(datetime.fromtimestamp(time))
     return f'''
-<div class="log-header">
+<span class="log-header">
 <span class="time">{html.escape(time_render)}</span>
 <span class="who">{who}:</span>
-</div>
+</span>
 '''.strip()
 def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
 
@@ -233,11 +233,13 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
                 if log.start:
                     yield '<div class="recv log">\n'
                     yield render_header(log.time, log.model)
-                    yield f'<div class="recv-body content">'
+                    yield '<div class="recv-body">\n'
+                    yield '<div class="recv-text content">'
 
                 yield html.escape(log.delta)
 
                 if log.error or log.finish:
+                    yield '</div>\n' # recv-text
                     yield '</div>\n' # recv-body
                     if log.error:
                         yield '<div class="recv-error">[recv-error]</div>\n'
@@ -246,7 +248,8 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
             case SendLog():
                 yield '<div class="send log">\n'
                 yield render_header(log.time, 'System')
-                for c in log.content:
+                yield '<div class="send-body">\n'
+                for c in sorted(log.content, key=lambda c: isinstance(c, TextContent)):
                     match c:
                         case TextContent():
                             yield '<div class="send-text send-content content">'
@@ -255,8 +258,10 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
                         case ImageContent():
                             src = f'log/{c.name}'
                             yield '<div class="send-image send-content content">\n'
+                            yield '<div class="send-image-header">Screenshot</div>\n'
                             yield f'<a href="{html.escape(src)}"><img src="{html.escape(src)}" width="{c.width}" height="{c.height}"></a>\n'
                             yield '</div>\n'
+                yield '</div>\n' # send-body
                 yield '</div>\n'
     yield '''
 </body>

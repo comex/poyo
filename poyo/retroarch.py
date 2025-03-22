@@ -54,14 +54,14 @@ def screenshot() -> Path:
     path.rename(new_path)
     return new_path
 
-# https://github.com/libretro/RetroArch/blob/master/libretro-common/include/libretro.h#L320
+# https://github.com/libretro/RetroArch/blob/5adaaf7851f73182d51dc04dde03f80a9c8f0d17/libretro-common/include/libretro.h#L320
 PAD_STATE_ATTR_TO_RETRO_DEVICE_ID = {
     'up': 4,
     'down': 5,
     'left': 6,
     'right': 7,
     'a': 8,
-    'b': 9,
+    'b': 0,
     'start': 3,
     'select': 2,
 }
@@ -108,3 +108,10 @@ def read_mem(addr: int, size: int, short_ok: bool = False) -> bytes:
     except Exception as e:
         e.add_note(f'in read_mem({addr:#x}, {size}), ret={ret!r}')
         raise
+
+def main():
+    pad_send(PadState(b=True))
+    time.sleep(1)
+    pad_send(PadState())
+    
+if __name__ == '__main__': main()

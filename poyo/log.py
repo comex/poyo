@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, Literal, Union, Iterable, Any, Protocol, Sequence
+from typing import TYPE_CHECKING, Generator, Iterator, Literal, Optional, Union, Iterable, Any, Protocol, Sequence
 from io import TextIOBase
 from dataclasses import dataclass, field
 from functools import cache, lru_cache
@@ -18,7 +18,7 @@ from .common import log_dir, operation, open_tail
 class StatelessSession(Protocol):
     def tokens_for_text(self, text: str) -> int: ...
     def tokens_for_image_size(self, size: tuple[int, int]) -> int: ...
-    def send(self, ml: 'MessageList') -> Iterable['RecvLog']: ...
+    def send(self, ml: 'MessageList') -> Generator['RecvLog', Optional[Literal['stop']], None]: ...
 
 @dataclass(eq=False)
 class ContentBase:
@@ -71,16 +71,8 @@ class ImageContent(ContentBase):
 
 Content = Union[TextContent, ImageContent]
 
-@dataclass(frozen=True)
-class MessageTag:
-    kind: Literal[
-        'response',
-        'send_misc',
-        'initial_instructions',
-        'acceptance',
-        'state_only',
-        'invalid_admonish',
-    ]
+MessageTag = str
+MessageTags = list[MessageTag]
 
 Role = Literal['user', 'developer', 'assistant']
 @dataclass(eq=False)
@@ -98,12 +90,14 @@ class Message:
         return {'role': self.role, 'content': [c.dump_for_openai() for c in self.content]}
 
     @property
-    def tag(self) -> MessageTag:
-        assert self.ref
-        for log in self.ref:
-            if isinstance(log, SendLog):
-                return log.tag
-        return MessageTag(kind='response')
+    def tags(self) -> MessageTags:
+        if isinstance(self.ref[0], SendLog):
+            return self.ref[0].tags
+        else:
+            return ['recv']
+
+    def all_text_content(self) -> str:
+        return '\n'.join(c.text for c in self.content if isinstance(c, TextContent))
 
 @dataclass
 class LogBase:
@@ -112,9 +106,9 @@ class LogBase:
 @dataclass
 class SendLog(LogBase):
     type: Literal['send'] = 'send'
-    tag: MessageTag = MessageTag(kind='send_misc')
+    tags: MessageTags = field(default_factory=lambda: ['send'])
     role: Role = 'assistant'
-    content: list[Content] = []
+    content: list[Content] = field(default_factory=list)
 
 @dataclass
 class RecvLog(LogBase):
@@ -276,62 +270,43 @@ class MessageList:
         return len(self._messages)
     def __repr__(self):
         return f'MessageList({len(self._messages)} messages, {self.total_tokens} total_tokens)'
+    def __bool__(self):
+        return bool(self._messages)
 
     def __iter__(self) -> Iterator[Message]:
         return self._messages.__iter__()
 
+    def last_message_idx_with_tag(self, tag: str) -> Optional[int]:
+        for i in range(len(self) - 1, -1, -1):
+            if tag in self[i].tags:
+                return i
+        return None
+
 class StatelessWrapper:
-    def __init__(self, sess: StatelessSession, log_path: Path):
+    def __init__(self, sess: StatelessSession, log_path: Path) -> None:
         self.sess = sess
 
         self.token_limit = 32000
-        self.max_history_images = 2
 
         self.message_list = MessageList(sess)
         self.fp = open(log_path, 'r+')
         for m in filtered_log_to_messages(load_jsonl(self.fp)):
             self.message_list.append(m)
 
-    def trim(self) -> None:
-        trim_tags: list[MessageTag] = []
-        old_tokens = self.message_list.total_tokens
-        i = 0
-        while (
-            i < len(self.message_list) and
-            self.message_list.total_tokens > self.token_limit
-        ):
-            tag = self.message_list[i].tag
-            match tag.kind:
-                case 'initial_instructions':
-                    should_trim = False
-                case _:
-                    should_trim = True
-            if should_trim:
-                self.message_list.pop(i)
-                trim_tags.append(tag)
-            else:
-                i += 1
-        if trim_tags:
-            trim_tag_kinds = [tag.kind for tag in trim_tags]
-            logging.warning(f'Trimmed {len(trim_tags)} messages to get total_tokens down from {old_tokens} to {self.message_list.total_tokens}: {trim_tag_kinds}')
-        if self.message_list.total_tokens > self.token_limit:
-            logging.error(f'After trimming we were still over the token limit! {self.message_list.total_tokens} > {self.token_limit}')
+    def remove_message(self, i: int) -> None:
+        m = self.message_list.pop(i)
+        logging.info(f'Removed message with tags {m.tags}, {m.tokens(self.sess)} tokens')
 
-    def remove_images(self) -> None:
-        remaining = self.max_history_images
-        for i, m in reversed(list(enumerate(self.message_list))):
-            if any(isinstance(c, ImageContent) for c in m.content):
-                if remaining > 0:
-                    remaining -= 1
-                    continue
-                new_m = Message(
-                    role=m.role,
-                    content=[(c if isinstance(c, TextContent) else
-                              TextContent('[image]'))
-                             for c in m.content]
-                )
-                new_m.ref = m.ref
-                self.message_list[i] = new_m
+    def redact_images_from_message(self, i: int) -> None:
+        m = self.message_list[i]
+        new_m = Message(
+            role=m.role,
+            content=[(c if isinstance(c, TextContent) else
+                      TextContent('[image]'))
+                     for c in m.content]
+        )
+        new_m.ref = m.ref
+        self.message_list[i] = new_m
 
     def log(self, log: Log) -> None:
         logging.info(str(log))
@@ -339,20 +314,23 @@ class StatelessWrapper:
         self.fp.write(json.dumps(j) + '\n')
         self.fp.flush()
 
-    def send(self, m: Message, tag: MessageTag) -> str:
-        self.remove_images()
-        send_log = SendLog(time=time.time(), role=m.role, content=m.content, tag=tag)
+    def send(self, m: Message, tags: MessageTags, recv_limit: Optional[int] = None) -> str:
+        if self.message_list.total_tokens > self.token_limit:
+            logging.error(f'At send time we were still over the token limit! {self.message_list.total_tokens} > {self.token_limit}')
+        send_log = SendLog(time=time.time(), role=m.role, content=m.content, tags=['send', *tags])
         m.ref = [send_log]
         self.message_list.append(m)
-        self.trim()
         logging.info(f'when sending, total_tokens is now at {self.message_list.total_tokens}')
         self.log(send_log)
         ret = ''
         rlogs: list[RecvLog] = []
-        for rlog in self.sess.send(self.message_list):
+        itr = self.sess.send(self.message_list)
+        for rlog in itr:
             rlogs.append(rlog)
             self.log(rlog)
             ret += rlog.delta
+            if recv_limit is not None and len(ret) >= recv_limit:
+                itr.send('stop')
         for m in filtered_log_to_messages(filter_log(rlogs)):
             self.message_list.append(m)
         return ret

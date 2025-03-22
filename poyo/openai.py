@@ -2,7 +2,7 @@ import json
 import logging
 from pathlib import Path
 import time
-from typing import Iterable
+from typing import Generator, Iterable, Literal, Optional
 import requests
 import requests.adapters
 from functools import cached_property
@@ -34,7 +34,7 @@ class OpenAISession:
             allowed_methods={'HEAD', 'GET', 'PUT', 'DELETE', 'OPTIONS', 'TRACE', 'POST'},
         )
         self.s.mount('https://', requests.adapters.HTTPAdapter(max_retries=retry))
-        self.models_list()
+        #self.models_list()
 
     def models_list(self):
         print(self.s.get(f'{self.base_url}/models').json())
@@ -68,7 +68,7 @@ class OpenAISession:
         tiles = ceil(size[0] / tile_size) * ceil(size[1] / tile_size)
         return fixed_cost + tile_cost * tiles
 
-    def send(self, ml: MessageList) -> Iterable[RecvLog]:
+    def send(self, ml: MessageList) -> Generator[RecvLog, Optional[Literal['stop']], None]:
         req = {
             'model': self.model,
             'messages': [m.dump_for_openai() for m in ml],
@@ -82,6 +82,7 @@ class OpenAISession:
             f'{self.base_url}/chat/completions',
             json=req,
             stream=True,
+            timeout=15,
         ) as resp:
             lines: Iterable[bytes]
             match resp.headers['Content-Type'].split(';')[0]:
@@ -120,7 +121,11 @@ class OpenAISession:
                         rlog.error = True
 
                     yielded_any = True
-                    yield rlog
+                    signal = yield rlog
+                    if signal == 'stop':
+                        logging.error('Breaking early due to stop signal')
+                        break
+
 
                 except BaseException as e:
                     if isinstance(e, Exception):

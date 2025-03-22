@@ -27,6 +27,17 @@ class FacingDirection(IntEnum):
     DOWN = 4
     UP = 8
 
+    def to_xy(self) -> tuple[int, int]:
+        match self:
+            case FacingDirection.RIGHT: return (1, 0)
+            case FacingDirection.LEFT: return (-1, 0)
+            case FacingDirection.DOWN: return (0, 1)
+            case FacingDirection.UP: return (0, -1)
+
+    def add(self, pos: tuple[int, int]) -> tuple[int, int]:
+        xy = self.to_xy()
+        return (pos[0] + xy[0], pos[1] + xy[1])
+
 def tile_loc_inbounds(x: int, y: int) -> bool:
     return (
         0 <= x < SCREEN_WIDTH_TILES and
@@ -196,8 +207,10 @@ def state_text(gs: GameSnapshot) -> str:
     bits.append(f'Your position: {gs.player_pos()}')
     try:
         facing = gs.player_facing()
-        fname = facing.name if facing is not None else 'Unknown'
-        bits.append(f'Facing direction: {fname}')
+        if facing is not None:
+            bits.append(f'Facing direction: {facing.name} (facing {facing.add(gs.player_pos())})')
+        else:
+            bits.append(f'Facing direction: Unknown')
     except ValueError:
         logging.exception('welp')
     return '\n'.join(bits)

@@ -41,7 +41,7 @@ setupObserver(0);
 
 setInterval(() => {
     let body = ifr.contentWindow.document.body;
-    let limit = 5;
+    let limit = 20;
     while (body.childElementCount > limit) {
         body.removeChild(body.firstChild);
     }

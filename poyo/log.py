@@ -353,6 +353,7 @@ class StatelessWrapper:
             self.log(rlog)
             ret += rlog.delta
             if recv_limit is not None and len(ret) >= recv_limit:
+                logging.info('sending stop signal')
                 itr.send('stop')
         for m in filtered_log_to_messages(filter_log(rlogs)):
             self.message_list.append(m)

@@ -265,7 +265,7 @@ def main_ai(args: Any):
         remove_images(wrap, max_images=0)
         trim_to_token_limit(wrap)
         m, tags = state_machine(wrap.message_list)
-        wrap.send(m, tags)
+        wrap.send(m, tags, recv_limit=20000)
 
 def main_screenshot(args: Any):
     if args.annotated:

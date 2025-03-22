@@ -249,7 +249,7 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
                 yield '<div class="send log">\n'
                 yield render_header(log.time, 'System')
                 yield '<div class="send-body">\n'
-                for c in sorted(log.content, key=lambda c: isinstance(c, TextContent)):
+                for c in log.content:#sorted(log.content, key=lambda c: isinstance(c, TextContent)):
                     match c:
                         case TextContent():
                             yield '<div class="send-text send-content content">'
@@ -258,7 +258,6 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
                         case ImageContent():
                             src = f'log/{c.name}'
                             yield '<div class="send-image send-content content">\n'
-                            yield '<div class="send-image-header">Screenshot</div>\n'
                             yield f'<a href="{html.escape(src)}"><img src="{html.escape(src)}" width="{c.width}" height="{c.height}"></a>\n'
                             yield '</div>\n'
                 yield '</div>\n' # send-body

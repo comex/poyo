@@ -24,11 +24,6 @@ body {
 }
 .time {
 }
-.send-image {
-    float: right;
-    outline: 1px solid #888;
-    box-shadow: rgba(0, 0, 0, 0.15) -1px 2px 4px;
-}
 .send-image-header {
     background-color: #c0c4f7;
     font-family: monospace;
@@ -39,11 +34,12 @@ body {
 .send-image img {
     width: 320px;
     height: 288px;
-    border: 5px solid white;
+    margin-top: 10px;
+    margin-bottom: 5px;
 }
 
 .send-body, .recv-body {
-    padding: 5px;
+    padding: 10px;
 }
 .send-text, .recv-text {
     white-space: pre-wrap;

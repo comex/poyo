@@ -63,8 +63,13 @@ The following actions are available (each button will be pressed for 0.5 seconds
 
 Tips:
 - Don't assume the exit is in a specific direction.  Explore the whole area.
-- The game is NOT broken.  If you think you can't move in a direction, it means that either you're up against a wall or you're getting confused in some other way.  Do not give up; instead, revisit your assumptions.
-- Do not hallucinate!  Are you sure the screen shows what you think it does?
+- The game is NOT broken.  The screen is not frozen.  If you think you can't move in a direction, it might mean:
+  - There is a text box or other UI element taking input.
+  - You're up against a wall
+  - You're getting confused in some other way
+Do not give up!  Instead, revisit your assumptions.
+
+- Do not hallucinate.  Are you sure the screen shows what you think it does?
 - Only write in English.
 '''
 #"wait": press nothing, just wait 1 second
@@ -77,6 +82,8 @@ CHECKUP1_TEXT = f'''
 Time for a periodic checkup.
 
 Summarize your progress and list the positions you've been to since the last time you saw instructions.
+
+List any important lessons that you've learned.
 
 Then think about what your overall goals should be to continue the game.
 '''

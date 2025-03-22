@@ -41,10 +41,13 @@ You are connected to an emulator playing a game of Pokémon Yellow Version.  You
 
 While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates.  Squares which are blocked/impassable have coordinates in *orange*; squares which are walkable have coordinates in *white*.
 
+The coordinate origin is top left; higher Y coordinates are lower on the screen.
+
 After receiving each screenshot, you should respond in two parts.
-- First, describe everything NEW or CHANGED in the screenshot:
-  - For each grid square with an identifiable object on it (NOT floor) which is newly visible or changed, briefly describe it and state its coordinates.
-  - For all new or changed game text on the screen (NOT coordinates from the overlay), recite the entire text.
+- First, describe everything in the screenshot:
+  - For each grid square with an identifiable object on it (NOT floor), briefly describe it and state its coordinates.
+  - For all game text on the screen (NOT coordinates from the overlay), recite the entire text.
+- Then, state what (if anything) changed since the last screenshot.
 - Then, explain your current thinking and goals.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action.
 
@@ -83,6 +86,10 @@ Okay, now it's time to continue the game.
 
 Just for reference, here are your instructions again.
 {INTRO_TEXT}
+'''
+
+LIST_ALL_TEXT = '''
+This is a special turn: you should list everything in the screenshot, not just new or changed things.  Next time you should go back to listing new or changed things.
 '''
 
 Action = str
@@ -174,6 +181,17 @@ def state_machine(ml: MessageList) -> tuple[Message, MessageTags]:
             tags.append('checkup1')
         else:
             need_shot = True
+
+        if False: # no list_all
+            last_listall_idx = ml.last_message_idx_with_tag('list_all')
+            if (
+                need_shot and
+                'checkup1' not in tags and
+                'instructions' not in tags and
+               ( last_listall_idx is None or len(ml) - last_listall_idx >= 20)
+            ):
+                text_bits.append(LIST_ALL_TEXT)
+                tags.append('list_all')
 
     assert tags, "we didn't figure out what to do?"
 

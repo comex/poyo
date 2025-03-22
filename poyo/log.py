@@ -201,7 +201,7 @@ def filtered_log_to_messages(logs: Iterable[Log]) -> Iterable[Message]:
 def tag_instructions(data: str) -> str:
     return re.sub(
         r'(You are connected.*)(?=\nCurrent state)',
-        r'<div class="instructions">\1</div>',
+        r'<div class="instructions"><div class="instructions-inner">\1</div><div class="instructions-snip">...snip...</div></div>',
         data,
         flags=re.S
     )

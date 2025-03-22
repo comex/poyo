@@ -42,11 +42,23 @@ body {
     color: #003000;
     font-weight: bold;
 }
-.instructions {
+.instructions-inner {
     max-height: 100px;
     overflow: scroll;
-    background: linear-gradient(to bottom, black, transparent);
-    color: transparent;
-    background-clip: text;
+    mask-image: linear-gradient(to bottom, black, transparent);
+}
+.instructions {
+    position: relative;
+}
+.instructions-snip::after {
     border-bottom: 1px solid #cccccc;
+    content: '';
+    margin-top: -6px;
+    width: 100%;
+    display: block;
+}
+.instructions-snip {
+    text-align: center;
+    position: absolute;
+    width: 100%;
 }

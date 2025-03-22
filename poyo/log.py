@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Generator, Iterator, Literal, Optional, Union, Iterable, Any, Protocol, Sequence
-from io import TextIOBase
 from dataclasses import dataclass, field
 from functools import cache, lru_cache
 from pathlib import Path
@@ -11,6 +10,7 @@ import html
 import base64
 import time
 import sys
+import re
 from datetime import datetime
 
 from .common import log_dir, operation, open_tail
@@ -117,7 +117,8 @@ class RecvLog(LogBase):
     start: bool = False
     finish: bool = False
     error: bool = False
-    orig_resp: Any = None
+    orig_resp: Any = None # TODO
+    model: str = '?model?'
 
     def _tldump(self, dumper: Dumper) -> Any:
         ret: Any = {'time': self.time, 'type': self.type, 'delta': self.delta}
@@ -133,9 +134,13 @@ Log = Union[
     RecvLog,
 ]
 
-def load_jsonl(fp: TextIOBase) -> Iterable[Log]:
-    for line in fp:
-        if line.strip():
+def load_jsonl(itr: Iterable[str]) -> Iterable[Log]:
+    buf = ''
+    for line in itr:
+        buf += line
+        lines = buf.split('\n')
+        buf = lines.pop()
+        for line in lines:
             # https://github.com/microsoft/pyright/issues/10091
             yield typedload.load(json.loads(line), Log) # type: ignore
 
@@ -193,6 +198,22 @@ def filtered_log_to_messages(logs: Iterable[Log]) -> Iterable[Message]:
                 m.ref=[log]
                 yield m
 
+def tag_instructions(data: str) -> str:
+    return re.sub(
+        r'(You are connected.*)(?=\nCurrent state)',
+        r'<div class="instructions">\1</div>',
+        data,
+        flags=re.S
+    )
+
+def render_header(time: float, who: str) -> str:
+    time_render = str(datetime.fromtimestamp(time))
+    return f'''
+<div class="log-header">
+<span class="time">{html.escape(time_render)}</span>
+<span class="who">{who}:</span>
+</div>
+'''.strip()
 def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
 
     css = (Path(__file__).parent / '../poyo.css').read_text()
@@ -211,8 +232,7 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
             case RecvLog():
                 if log.start:
                     yield '<div class="recv log">\n'
-                    time_render = str(datetime.fromtimestamp(log.time))
-                    yield f'<div class="time">{html.escape(time_render)}</div>\n'
+                    yield render_header(log.time, log.model)
                     yield f'<div class="recv-body content">'
 
                 yield html.escape(log.delta)
@@ -225,13 +245,12 @@ def filtered_log_to_html(logs: Iterable[Log]) -> Iterable[str]:
 
             case SendLog():
                 yield '<div class="send log">\n'
-                time_render = str(datetime.fromtimestamp(log.time))
-                yield f'<div class="time">{html.escape(time_render)}</div>\n'
+                yield render_header(log.time, 'System')
                 for c in log.content:
                     match c:
                         case TextContent():
                             yield '<div class="send-text send-content content">'
-                            yield html.escape(c.text)
+                            yield tag_instructions(html.escape(c.text))
                             yield '</div>\n'
                         case ImageContent():
                             src = f'log/{c.name}'

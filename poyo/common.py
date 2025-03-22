@@ -4,10 +4,12 @@ from typing import Iterator, TypeVar, Callable
 from contextlib import contextmanager
 import io
 import time
+import fcntl 
 import faulthandler
 import signal
 import logging
 import re
+import os
 import subprocess
 import sys
 import threading
@@ -96,6 +98,11 @@ class Tail(io.RawIOBase):
         self.stdout = self.p.stdout
         self.stdin = self.p.stdin
 
+        # without this, we block on read even when careful to select first
+        fd = self.stdout.fileno()
+        flag = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flag | os.O_NONBLOCK)
+
     def read(self, size: int = -1, /) -> bytes:
         return self.stdout.read(size)
 
@@ -107,7 +114,6 @@ class Tail(io.RawIOBase):
         return True
 
     def close(self) -> None:
-        print('tail close')
         self.stdin.close()
         self.stdout.close()
         super().close()

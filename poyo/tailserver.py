@@ -1,130 +1,105 @@
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import AsyncIterable, Iterable, Iterator, Optional, TypeAlias, Union
 import re
-import time
+from typing import Any, Iterable
+from urllib.parse import urlparse, parse_qs
+from dataclasses import dataclass
 import select
-import aiohttp
-from aiohttp import web
-import asyncio
-import queue
-from typing import TypeVar
+import threading
+import time
 
 from poyo.log import filter_log, filtered_log_to_html, load_jsonl
 
-from .common import Tail, latest_log, log_dir, open_tail
+from .common import latest_log, open_tail
 
-T = TypeVar('T')
-QueueItem: TypeAlias = Union[tuple[T], BaseException, None]
-# started as lowest effort possible
-# this sucks
-async def asyncify_iterable(itr: Iterable[T]) -> AsyncIterable[T]:
-    q: queue.Queue[QueueItem[T]] = queue.Queue(maxsize=5)
-    event = asyncio.Event()
-    loop = asyncio.get_event_loop()
-    def bg_thread() -> None:
-        async def wake():
-            event.set()
-        def put(x: QueueItem[T]) -> None:
-            #print('>put')
-            q.put((t,))
-            asyncio.run_coroutine_threadsafe(wake(), loop)
-        try:
-            for t in itr:
-                try:
-                    put((t,))
-                except queue.ShutDown:
-                    break
-        except BaseException as e:
-            put(e)
-        else:
-            put(None)
-    asyncio.create_task(asyncio.to_thread(bg_thread))
-    try:
-        while True:
-            await event.wait()
-            event.clear()
-            while not q.empty():
-                x = q.get_nowait()
-                #print('>get')
-                match x:
-                    case (t,):
-                        yield t
-                    case BaseException():
-                        raise x
-                    case None:
-                        break
-    finally:
-        q.shutdown(immediate=True)
+@dataclass
+class Resp:
+    content_type: str
+    data: Iterable[str]
 
-async def buffer_aiterable(itr: AsyncIterable[T]) -> AsyncIterable[T]:
-    queue: asyncio.Queue[Union[tuple[T], BaseException, None]] = asyncio.Queue(maxsize=5)
-    async def bg_task() -> None:
-        try:
-            async for t in itr:
-                await queue.put((t,))
-        except BaseException as e:
-            await queue.put(e)
-        else:
-            await queue.put(None)
-    task = asyncio.create_task(bg_task())
-    try:
-        while True:
-            x = await queue.get()
-            match x:
-                case BaseException():
-                    raise x
-                case None:
-                    break
-                case (t,):
-                    yield t
-    finally:
-        task.cancel()
 
-async def handle_render(request: web.Request) -> web.StreamResponse:
-    name = request.match_info['name']
-    tail = 'tail' in request.query
+TEXT_HTML = 'text/html; charset=utf-8'
+TEXT_PLAIN = 'text/plain; charset=utf-8'
 
-    if name == 'latest':
-        name = latest_log().name
-    assert '/' not in name and name.endswith('.txt')
+def slow_filter(r: Resp) -> Resp:
+    def data():
+        written_so_far = 0
+        for blob in r.data:
+            while blob:
+                bufsize = min(len(blob), max(30, 4096 - written_so_far))
+                yield blob[:bufsize]
+                time.sleep(0.2)
+                blob = blob[bufsize:] # n^2 don't care
 
-    log_path = log_dir / name
-    try:
-        fp = open_tail(log_path) if tail else open(log_path)
-    except FileNotFoundError:
-        return web.StreamResponse(status=404, reason='txt not found')
-    resp = web.StreamResponse()
-    resp.headers['Content-Type'] = 'text/html; charset=utf-8'
-    await resp.prepare(request)
-    # Weird hack where we can't return the response yet because then we
-    # wouldn't get the cancel.
-    try:
-        it = await asyncio.to_thread(lambda: filtered_log_to_html(filter_log(load_jsonl(fp))))
-        async for blob in asyncify_iterable(it):
-            #print('##', blob)
-            await resp.write(blob.encode('utf-8'))
-    finally:
-        def cthread():
-            print('closing...', fp, fp.buffer)
-            fp.close()
-            print('did close', fp)
-        asyncio.create_task(asyncio.to_thread(cthread))
-        print('all gone')
+    return Resp(r.content_type, data())
 
-def create_app() -> web.Application:
-    app = web.Application()
-    app.add_routes([
-        web.get(r'/render/{name:(log([0-9]+)\.txt|latest)}', handle_render),
-    ])
-    app.router.add_static('/', '.', show_index=True)
-    app.router.add_static('/render/log', 'log', show_index=True)
-
-    return app
-
-if __name__ == '__main__':
-    web.run_app(
-        create_app(),
-        #host='127.0.0.1',
-        port=8002,
-        handler_cancellation=True
+def render_filter(r: Resp) -> Resp:
+    assert r.content_type == TEXT_PLAIN
+    return Resp(
+        TEXT_HTML,
+        filtered_log_to_html(filter_log(load_jsonl(r.data)))
     )
+
+def initial_resp(path: Path, tail: bool, wfile_for_interrupt: Any) -> Resp:
+    fp = open_tail(path) if tail else open(path)
+    def initial_data():
+        while True:
+            # must select to avoid python deadlocks
+            r, _w, _x = select.select([fp, wfile_for_interrupt], [], [])
+            if wfile_for_interrupt in r:
+                break
+            assert fp in r
+            blob = fp.read(4096)
+            if not blob:
+                break
+            yield blob
+    ctype = TEXT_HTML if path.name.endswith('.html') else TEXT_PLAIN
+    return Resp(ctype, initial_data())
+
+# (started as) lowest effort possible
+class MyHTTPRequestHandler(SimpleHTTPRequestHandler):
+    def do_GET(self):
+        self.path = re.sub(r'^/log/log', '/log', self.path) # meh
+        parsed = urlparse(self.path)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if parsed.path == '/log/latest':
+            self.path = '/log/' + latest_log().name
+
+        if not query:
+            return super().do_GET()
+
+
+        path = Path(self.translate_path(self.path))
+        assert path.exists(), path
+        tail = False
+        if 'tail' in query:
+            tail = True
+            del query['tail']
+
+        resp = initial_resp(path, tail, self.wfile)
+        for filter_name in query:
+            match filter_name:
+                case 'slow':
+                    resp = slow_filter(resp)
+                case 'render':
+                    resp = render_filter(resp)
+                case _:
+                    raise Exception(f'invalid filter {filter_name!r}')
+
+        self.send_response(200)
+        self.send_header('Content-Type', resp.content_type)
+        self.end_headers()
+
+        for chunk in resp.data:
+            self.wfile.write(chunk.encode())
+            self.wfile.flush()
+        print('bye')
+
+
+def main():
+    httpd = ThreadingHTTPServer((
+        #'127.0.0.1',
+        '0.0.0.0',
+    8002), MyHTTPRequestHandler)
+    httpd.serve_forever()
+main()

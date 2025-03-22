@@ -23,8 +23,6 @@ body {
     background-color: #f0e0c0;
 }
 .time {
-    background-color: #00c4c7;
-    font-family: monospace;
 }
 .send-image img {
     width: 320px;
@@ -34,4 +32,21 @@ body {
 .content {
     padding: 5px;
     white-space: pre-wrap;
+}
+.log-header {
+    background-color: #00c4c7;
+    font-family: monospace;
+}
+.who {
+    /*background-color: #00ef40;*/
+    color: #003000;
+    font-weight: bold;
+}
+.instructions {
+    max-height: 100px;
+    overflow: scroll;
+    background: linear-gradient(to bottom, black, transparent);
+    color: transparent;
+    background-clip: text;
+    border-bottom: 1px solid #cccccc;
 }

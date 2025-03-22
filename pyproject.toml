@@ -3,9 +3,8 @@ name = "poyo"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
-    "aiohttp>=3.11.14",
     "google-genai>=1.5.0",
     "imageio>=2.37.0",
     "numpy>=2.2.3",

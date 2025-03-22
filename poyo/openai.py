@@ -103,7 +103,7 @@ class OpenAISession:
                     if not line.strip():
                         continue
                     rdata = json.loads(line)
-                    rlog = RecvLog(time=time.time(), orig_resp=rdata)
+                    rlog = RecvLog(time=time.time(), orig_resp=rdata, model=self.model)
 
                     assert rdata['object'] == 'chat.completion.chunk'
 

@@ -8,7 +8,7 @@ import faulthandler
 import signal
 import logging
 import re
-import asyncio
+import subprocess
 import sys
 import threading
 from typing_extensions import Buffer
@@ -82,27 +82,15 @@ def operation(desc: str) -> Iterator[None]:
     b = time.time()
     logging.info(f'{desc}: finished after {1000 * (b - a):.0f}ms')
 
-async def tail(filename: Path) -> AsyncIterator[bytes]:
-    p = await asyncio.create_subprocess_exec(
-        sys.executable, '-m', 'poyo.janitor', 'tail', '-n', '+1', '-f', '--', filename,
-        limit=0,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-    )
-    assert p.stdin is not None
-    assert p.stdout is not None
-    try:
-        pass
-    finally:
-        # janitor will clean up when stdin is closed.
-        # don't kill since that won't affect the child.
-        # don't close stdout since we can't with asyncio.
-        # no need to wait_closed either
-        p.stdin.close()
 class Tail(io.RawIOBase):
     def __init__(self, filename: Path):
         filename.stat() # raise error if not accessible
-        self.p = 
+        self.p = subprocess.Popen(
+            [sys.executable, '-m', 'poyo.janitor', 'tail', '-n', '+1', '-f', '--', filename],
+            bufsize=0,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
         assert self.p.stdout is not None
         assert self.p.stdin is not None
         self.stdout = self.p.stdout
@@ -119,6 +107,7 @@ class Tail(io.RawIOBase):
         return True
 
     def close(self) -> None:
+        print('tail close')
         self.stdin.close()
         self.stdout.close()
         super().close()

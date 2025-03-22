@@ -205,7 +205,7 @@ def trim_to_token_limit(wrap: StatelessWrapper) -> None:
             raise Exception("we sent instructions that were way too long?")
         wrap.remove_message(1)
         n += 1
-    logging.info(f'Trimmed {n} messages, {len(wrap.message_list)} left')
+    logging.info(f'Trimmed {n} messages, {len(wrap.message_list)} left ({wrap.message_list.total_tokens} tokens)')
 
 
 def remove_images(wrap: StatelessWrapper, max_images: int) -> None:

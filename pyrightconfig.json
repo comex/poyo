@@ -3,5 +3,4 @@
     "reportMissingModuleSource": "none",
     "reportUnusedImport": "warning",
     "reportUnusedVariable": "warning",
-    "reportMissingTypeStubs": "none" // google.genai produces this, maybe because not fully typed (but it is mostly typed)
 }

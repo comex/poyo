@@ -41,10 +41,14 @@ ENABLE_NEW_OR_CHANGED = False
 INTRO_TEXT = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
 
+While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates.  Squares which are blocked/impassable have coordinates in *orange*; squares which are walkable have coordinates in *white*.
+
+The coordinate origin is top left; higher Y coordinates are lower on the screen.
+
 After receiving each screenshot, you should respond in two parts.
 - First, describe everything [NC:NEW or CHANGED ]in the screenshot:
-  - For each grid square with an identifiable object on it (NOT floor)[NC: which is newly visible or changed], briefly describe it and state its direction relative to the player and distance from the player.
-  - For all [NC:new or changed ]game text on the screen, recite the entire text.
+  - For each grid square with an identifiable object on it (NOT floor)[NC: which is newly visible or changed], briefly describe it and state its coordinates.
+  - For all [NC:new or changed ]game text on the screen (NOT coordinates from the overlay), recite the entire text.
 - Then, explain your current thinking and goals.
 - Finally, you MUST end with a specially-formatted line starting with "ACTION:" followed by exactly one action.
 
@@ -207,8 +211,7 @@ def state_machine(ml: MessageList) -> tuple[Message, MessageTags]:
         gs = GameSnapshot()
         text_bits.append('Current state:\n' + state_text(gs))
         tags.append('state')
-        #ss = annotated_screenshot(gs)
-        ss = retroarch.screenshot()
+        ss = annotated_screenshot(gs)
         content.append(ImageContent.from_name(ss.name))
         tags.append('screenshot')
 

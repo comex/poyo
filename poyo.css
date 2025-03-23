@@ -63,9 +63,18 @@ body {
     overflow: scroll;
     mask-image: linear-gradient(to bottom, black, transparent);
 }
+.instructions.unsnip > .instructions-inner {
+    max-height: none;
+    mask-image: none;
+}
 .instructions {
     border-bottom: 1px solid #cccccc;
 }
 .instructions-snip {
     text-align: center;
+    display: block;
+    color: black;
+}
+.instructions.unsnip > .instructions-snip {
+    display: none;
 }

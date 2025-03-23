@@ -246,7 +246,6 @@ def remove_images(wrap: StatelessWrapper, max_images: int) -> None:
             wrap.redact_images_from_message(i)
 
 def remove_trailing_sends(wrap: StatelessWrapper) -> None:
-    # If the list somehow ends in a send then drop it.
     last_recv = wrap.message_list.last_message_idx_with_tag('recv')
     while last_recv is not None and last_recv != len(wrap.message_list) - 1:
         wrap.remove_message(-1)
@@ -261,8 +260,16 @@ def main_ai(args: Any):
     wrap = StatelessWrapper(OpenAISession(), log_path)
 
     while True:
+        # If the script was interrupted while waiting for a response, then chop
+        # off the last send and retry.
         remove_trailing_sends(wrap)
+        # Remove *all* past screenshots from context in the hope that it won't
+        # get confused and refer to previous screenshots instead of the current
+        # one.  You can have it instead keep the last N screenshots by changing
+        # `max_images`.
         remove_images(wrap, max_images=0)
+        # Remove excess tokens from the start of the conversation, but try to
+        # avoid cutting off instructions.
         trim_to_token_limit(wrap)
         m, tags = state_machine(wrap.message_list)
         wrap.send(m, tags, recv_limit=20000)

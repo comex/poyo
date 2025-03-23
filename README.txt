@@ -63,6 +63,6 @@ How to use:
 
   http://127.0.0.1:8002/frame.html
 
-  or without the autoscrolling:
+  or without the autoscrolling/live-updating:
 
-  http://127.0.0.1:8002/log/latest?render&tail
+  http://127.0.0.1:8002/log/latest?render

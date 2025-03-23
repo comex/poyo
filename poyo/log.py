@@ -121,7 +121,7 @@ class RecvLog(LogBase):
     model: str = '?model?'
 
     def _tldump(self, dumper: Dumper) -> Any:
-        ret: Any = {'time': self.time, 'type': self.type, 'delta': self.delta}
+        ret: Any = {'time': self.time, 'type': self.type, 'delta': self.delta, 'model': self.model}
         for x in ['start', 'finish', 'error']:
             if getattr(self, x):
                 ret[x] = True
@@ -201,7 +201,7 @@ def filtered_log_to_messages(logs: Iterable[Log]) -> Iterable[Message]:
 def tag_instructions(data: str) -> str:
     return re.sub(
         r'(You are connected.*)(?=\nCurrent state)',
-        r'<div class="instructions"><div class="instructions-inner">\1</div><div class="instructions-snip">...snip...</div></div>',
+        '<div class="instructions"><div class="instructions-inner">\\1</div><a href="about:blank" onclick="event.currentTarget.parentNode.className += \' unsnip\'; return false" class="instructions-snip">...snip...</a></div>',
         data,
         flags=re.S
     )

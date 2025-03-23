@@ -49,6 +49,8 @@ How to use:
 
     - You can keep this running.
 
+    - Don't expose this publicly since it serves everything including secrets.  You may want to edit tailserver.py to listen on 127.0.0.1 rather than 0.0.0.0.
+
 - Separately, run this to actually start controlling the game: `uv run python -m poyo.yopo ai`
 
     - This will start a new session in `log/log00.txt` (the name auto-increments).

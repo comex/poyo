@@ -3,6 +3,7 @@ os.environ['SSLKEYLOGFILE'] = 'sslkeylogfile.txt'
 
 import time
 import re
+import regex
 # import json
 from typing import Optional, Any
 from pathlib import Path
@@ -36,9 +37,9 @@ def debug_http():
     # ^ can only go to stdout :(
 #debug_http()
 
-ENABLE_NEW_OR_CHANGED = False
+ENABLE_NEW_OR_CHANGED = True
 
-INTRO_TEXT = '''
+_instructions = '''
 You are connected to an emulator playing a game of Pokémon Yellow Version.  You will receive screenshots of the current state, and you will be able to press buttons in response.  Your job is to beat the game.  Everything is up to you, from overall game strategy all the way down to individual button presses; you'll have to figure it out based on vision, reasoning, and any preexisting game knowledge.
 
 While in the overworld, screenshots will be annotated with a grid.  Each grid square is overlaid with its coordinates.  Squares which are blocked/impassable have coordinates in *orange*; squares which are walkable have coordinates in *white*.
@@ -75,7 +76,17 @@ Do not give up!  Instead, revisit your assumptions.
 '''
 #"wait": press nothing, just wait 1 second
 
-INTRO_TEXT = re.sub(r'\[NC:(.*?)\]', lambda m: m[1] if ENABLE_NEW_OR_CHANGED else '', INTRO_TEXT) # type: ignore
+_instructions = re.sub(r'\[NC:(.*?)\]', lambda m: m[1] if ENABLE_NEW_OR_CHANGED else '', _instructions).strip() # type: ignore
+
+LIST_ALL_TEXT = '''
+This is a special turn: you should list everything in the screenshot, not just new or changed things.  Next turn you should go back to listing new or changed things.
+'''
+
+INTRO_TEXT = f'''
+{_instructions}
+
+For the first turn, you should list everything in the screenshot, not just new or changed things.  Next turn you should go back to listing new or changed things.
+'''
 
 NO_ACTION_TEXT = '''
 Could not parse ACTION line out of that response.  Try again.
@@ -94,12 +105,9 @@ Then think about what your overall goals should be to continue the game.
 CHECKUP2_TEXT = f'''
 Okay, now it's time to continue the game.
 
-Just for reference, here are your instructions again.
-{INTRO_TEXT}
-'''
+Just for reference, here are your instructions again:
 
-LIST_ALL_TEXT = '''
-This is a special turn: you should list everything in the screenshot, not just new or changed things.  Next time you should go back to listing new or changed things.
+{_instructions}
 '''
 
 Action = str
@@ -129,11 +137,13 @@ def do_action(action: Action) -> None:
 
 def parse_resp(resp: str) -> Optional[Action]:
     resp = resp.replace('*', '') # sometimes it likes to bold things
-    ms = re.findall(r'ACTIONS?"?:\s*"?([a-z]+)', resp, flags=re.I)
-    if not ms:
+    # Using regex here for reverse matching.  Previously I used re.findall, but
+    # that doesn't work with overlaps like 'action: action: right'
+    m = regex.search(r'ACTIONS?"?:\s*"?([a-z]+)', resp, flags=regex.I | regex.R)
+    if not m:
         logging.warning(f'[No ACTION line: {resp!r}]')
         return None
-    action = ms[-1]
+    action = m[1]
     if not is_valid_action(action):
         logging.warning(f'[Invalid action: {action!r}]')
         return None
@@ -267,7 +277,7 @@ def main_ai(args: Any):
         # get confused and refer to previous screenshots instead of the current
         # one.  You can have it instead keep the last N screenshots by changing
         # `max_images`.
-        remove_images(wrap, max_images=0)
+        remove_images(wrap, max_images=2)
         # Remove excess tokens from the start of the conversation, but try to
         # avoid cutting off instructions.
         trim_to_token_limit(wrap)

@@ -5,7 +5,6 @@ from typing import Any, Iterable
 from urllib.parse import urlparse, parse_qs
 from dataclasses import dataclass
 import select
-import threading
 import time
 
 from poyo.log import filter_log, filtered_log_to_html, load_jsonl

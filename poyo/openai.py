@@ -18,8 +18,9 @@ class OpenAISession:
         #self.model = 'gpt-4o'
         #self.base_url = 'https://api.openai.com/v1'
         self.base_url = 'https://generativelanguage.googleapis.com/v1beta/openai'
-        self.model = 'gemini-2.0-flash-thinking-exp-01-21'
+        #self.model = 'gemini-2.0-flash-thinking-exp-01-21'
         #self.model = 'gemini-2.0-pro-exp-02-05'
+        self.model = 'gemini-2.5-pro-exp-03-25'
         api_key_file = 'gemini_api_key.txt'
         #api_key_file = 'openai_api_key.txt'
 

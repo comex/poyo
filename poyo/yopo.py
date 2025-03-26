@@ -125,10 +125,12 @@ def do_action(action: Action) -> None:
         if action != 'wait':
             setattr(pad_state, action, True)
         retroarch.pad_send(pad_state)
-        wait_time = 0.25
+        wait_time = 0.17
         logging.info(f'Waiting {wait_time}s before releasing...')
+        pre = time.time()
         time.sleep(wait_time)
-        logging.info(f'Releasing and waiting another 1s...')
+        post = time.time()
+        logging.info(f'Releasing after actual {post - pre}s, and waiting another 1s...')
         retroarch.pad_send(PadState())
         time.sleep(1)
         logging.info('Done waiting.')
@@ -165,7 +167,7 @@ def state_machine(ml: MessageList) -> tuple[Message, MessageTags]:
 
     if not ml:
         text_bits.append(INTRO_TEXT)
-        tags.append('instructions')
+        tags += ['instructions', 'intro']
         need_shot = True
     else:
         last_send_idx = ml.last_message_idx_with_tag('send')
@@ -203,12 +205,14 @@ def state_machine(ml: MessageList) -> tuple[Message, MessageTags]:
             need_shot = True
 
         if ENABLE_NEW_OR_CHANGED:
-            last_listall_idx = ml.last_message_idx_with_tag('list_all')
+            last_listall_idx = ml.last_message_idx_with(
+                lambda m: 'list_all' in m.tags or 'intro' in m.tags
+            )
             if (
                 need_shot and
                 'checkup1' not in tags and
                 'instructions' not in tags and
-               ( last_listall_idx is None or len(ml) - last_listall_idx >= 20)
+                (last_listall_idx is None or len(ml) - last_listall_idx >= 20)
             ):
                 text_bits.append(LIST_ALL_TEXT)
                 tags.append('list_all')

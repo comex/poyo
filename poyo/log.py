@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Generator, Iterator, Literal, Optional, Union, Iterable, Any, Protocol, Sequence
+from typing import TYPE_CHECKING, Callable, Generator, Iterator, Literal, Optional, Union, Iterable, Any, Protocol, Sequence
 from dataclasses import dataclass, field
 from functools import cache, lru_cache
 from pathlib import Path
@@ -299,11 +299,14 @@ class MessageList:
     def __iter__(self) -> Iterator[Message]:
         return self._messages.__iter__()
 
-    def last_message_idx_with_tag(self, tag: str) -> Optional[int]:
+    def last_message_idx_with(self, f: Callable[[Message], bool]) -> Optional[int]:
         for i in range(len(self) - 1, -1, -1):
-            if tag in self[i].tags:
+            if f(self[i]):
                 return i
         return None
+
+    def last_message_idx_with_tag(self, tag: str) -> Optional[int]:
+        return self.last_message_idx_with(lambda m: tag in m.tags)
 
 class StatelessWrapper:
     def __init__(self, sess: StatelessSession, log_path: Path) -> None:

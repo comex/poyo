@@ -110,8 +110,8 @@ def read_mem(addr: int, size: int, short_ok: bool = False) -> bytes:
         raise
 
 def main():
-    pad_send(PadState(a=True))
-    time.sleep(1)
+    pad_send(PadState(right=True))
+    time.sleep(0.1)
     pad_send(PadState())
     
 if __name__ == '__main__': main()

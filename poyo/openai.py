@@ -30,7 +30,7 @@ class OpenAISession:
 
         retry = requests.adapters.Retry(
             10000,
-            status_forcelist={429, 503},
+            status_forcelist={429, 503, 500},
             backoff_factor=0.1,
             allowed_methods={'HEAD', 'GET', 'PUT', 'DELETE', 'OPTIONS', 'TRACE', 'POST'},
         )

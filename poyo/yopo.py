@@ -1,13 +1,19 @@
+# TODO:
+# - public webpage
+# - memory system
+# - smarter screenshots (avoid showing intermediate states)
+# - make screenshots more readable for the AI
+# - consider telling the AI whether a text box is on screen
+# - redo game interaction to avoid inconsistent movement
+
 import os
 os.environ['SSLKEYLOGFILE'] = 'sslkeylogfile.txt'
 
 import time
 import re
 import regex
-# import json
 from typing import Optional, Any
 from pathlib import Path
-#from dataclasses import dataclass
 
 from .common import *
 from .log import Content, ImageContent, Message, MessageList, MessageTags, StatelessWrapper, TextContent
@@ -65,12 +71,8 @@ The following actions are available (each button will be pressed for 0.5 seconds
 
 Tips:
 - Don't assume the exit is in a specific direction.  Explore the whole area.
-- The game is NOT broken.  The screen is not frozen.  If you think you can't move in a direction, it might mean:
-  - There is a text box or other UI element taking input.
-  - You're up against a wall
-  - You're getting confused in some other way
-Do not give up!  Instead, revisit your assumptions.
-
+- The game is NOT broken, softlocked, or glitched.  The screen is not frozen.  If you think the game is glitched, it ALWAYS means YOU ARE CONFUSED and should drop prior assumptions and reevaluate.  Do not give up!
+- Don't forget that text boxes block player movement.
 - Do not hallucinate.  Are you sure the screen shows what you think it does?
 - Only write in English.
 '''
